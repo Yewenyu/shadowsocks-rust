@@ -1,6 +1,6 @@
 //! Local server launchers
 
-use std::{net::IpAddr, path::PathBuf, process, time::Duration};
+use std::{net::IpAddr, path::PathBuf, process, sync::mpsc::channel, time::Duration};
 
 use clap::{App, Arg, ArgGroup, ArgMatches, ErrorKind as ClapErrorKind};
 use futures::future::{self, Either};
@@ -27,8 +27,7 @@ use shadowsocks_service::{
 use crate::logging;
 use crate::{
     config::{Config as ServiceConfig, RuntimeMode},
-    monitor,
-    validator,
+    monitor, validator,
 };
 
 /// Defines command line options
@@ -838,3 +837,131 @@ fn launch_reload_server_task(config_path: PathBuf, balancer: PingBalancer) {
 
 #[cfg(not(unix))]
 fn launch_reload_server_task(_: PathBuf, _: PingBalancer) {}
+
+pub fn start<F: Fn(std::sync::mpsc::Sender<bool>)>(path: &str, restart: bool, stop: F) {
+    let (config, runtime) = {
+        let config_path_opt = Some(PathBuf::from(path));
+
+        let mut service_config = match config_path_opt {
+            Some(ref config_path) => match ServiceConfig::load_from_file(config_path) {
+                Ok(c) => c,
+                Err(err) => {
+                    eprintln!("loading config {:?}, {}", config_path, err);
+                    process::exit(crate::EXIT_CODE_LOAD_CONFIG_FAILURE);
+                }
+            },
+            None => ServiceConfig::default(),
+        };
+        // service_config.set_options(matches);
+
+        if restart == false {
+            #[cfg(feature = "logging")]
+            match service_config.log.config_path {
+                Some(ref path) => {
+                    logging::init_with_file(path);
+                }
+                None => {
+                    logging::init_with_config("sslocal", &service_config.log);
+                }
+            }
+        }
+
+        trace!("{:?}", service_config);
+
+        let mut config = match config_path_opt {
+            Some(cpath) => match Config::load_from_file(&cpath, ConfigType::Local) {
+                Ok(cfg) => cfg,
+                Err(err) => {
+                    eprintln!("loading config {:?}, {}", cpath, err);
+                    process::exit(crate::EXIT_CODE_LOAD_CONFIG_FAILURE);
+                }
+            },
+            None => Config::new(ConfigType::Local),
+        };
+
+        // DONE READING options
+
+        if config.local.is_empty() {
+            eprintln!(
+                "missing `local_address`, consider specifying it by --local-addr command line option, \
+                    or \"local_address\" and \"local_port\" in configuration file"
+            );
+            return;
+        }
+
+        if config.server.is_empty() {
+            eprintln!(
+                "missing proxy servers, consider specifying it by \
+                    --server-addr, --encrypt-method, --password command line option, \
+                        or --server-url command line option, \
+                        or configuration file, check more details in https://shadowsocks.org/en/config/quick-guide.html"
+            );
+            return;
+        }
+
+        if let Err(err) = config.check_integrity() {
+            eprintln!("config integrity check failed, {}", err);
+            return;
+        }
+
+        info!("shadowsocks local {} build {}", crate::VERSION, crate::BUILD_TIME);
+
+        let mut builder = match service_config.runtime.mode {
+            RuntimeMode::SingleThread => Builder::new_current_thread(),
+            #[cfg(feature = "multi-threaded")]
+            RuntimeMode::MultiThread => {
+                let mut builder = Builder::new_multi_thread();
+                if let Some(worker_threads) = service_config.runtime.worker_count {
+                    builder.worker_threads(worker_threads);
+                }
+
+                builder
+            }
+        };
+
+        let runtime = builder.enable_all().build().expect("create tokio Runtime");
+
+        (config, runtime)
+    };
+
+    let (ts, tr) = channel::<bool>();
+
+    stop(ts);
+
+    runtime.block_on(async move {
+        let config_path = config.config_path.clone();
+
+        let instance = create_local(config).await.expect("create local");
+
+        if let Some(config_path) = config_path {
+            launch_reload_server_task(config_path, instance.server_balancer().clone());
+        }
+
+        let abort_signal = monitor::create_signal_monitor();
+        let server = instance.run();
+
+        tokio::spawn(async move {
+            tokio::pin!(abort_signal);
+            tokio::pin!(server);
+            match future::select(server, abort_signal).await {
+                // Server future resolved without an error. This should never happen.
+                Either::Left((Ok(..), ..)) => {
+                    eprintln!("server exited unexpectedly");
+                    process::exit(crate::EXIT_CODE_SERVER_EXIT_UNEXPECTEDLY);
+                }
+                // Server future resolved with error, which are listener errors in most cases
+                Either::Left((Err(err), ..)) => {
+                    eprintln!("server aborted with {}", err);
+                    process::exit(crate::EXIT_CODE_SERVER_ABORTED);
+                }
+                // The abort signal future resolved. Means we should just exit.
+                Either::Right(_) => (),
+            }
+        });
+        for r in tr {
+            if r {
+                return;
+            }
+        }
+    });
+}

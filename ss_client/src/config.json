@@ -1,0 +1,8 @@
+{
+    "server": "159.223.67.248",
+    "server_port": 37333,
+    "password": "Hvln2v9OFHtkS4NK",
+    "method": "aes-256-gcm",
+    "local_address": "127.0.0.1",
+    "local_port": 7778
+}

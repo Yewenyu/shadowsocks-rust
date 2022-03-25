@@ -43,6 +43,7 @@ members = [
     "crates/shadowsocks",
     "crates/shadowsocks-service",
     "crates/shadowsocks-tools",
+    "ss_client"
 ]
 
 [profile.release]

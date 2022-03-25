@@ -2277,6 +2277,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ss_client"
+version = "0.1.0"
+dependencies = [
+ "lazy_static",
+ "shadowsocks-rust",
+]
+
+[[package]]
 name = "strsim"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

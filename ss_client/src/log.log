@@ -1,0 +1,75 @@
+2022-03-31T17:28:01.517696+08:00 - shadowsocks local 1.13.5 build 2022-03-29T11:47:38.492368+00:00
+2022-03-31T17:28:01.528239+08:00 - shadowsocks socks TCP listening on 127.0.0.1:7778
+2022-03-31T17:28:01.528574+08:00 - shadowsocks socks5 UDP listening on 127.0.0.1:7778
+2022-03-31T17:28:03.563205+08:00 - CONNECT alive.github.com:443
+2022-03-31T17:28:03.571953+08:00 - established tcp tunnel 127.0.0.1:50091 <-> alive.github.com:443 through sever 103.253.43.210:32895 (outbound: 103.253.43.210:32895)
+2022-03-31T17:28:08.123190+08:00 - CONNECT www.ip111.cn:80
+2022-03-31T17:28:08.123870+08:00 - querying: www.ip111.cn A
+2022-03-31T17:28:08.124037+08:00 - sending request: [Query { name: Name { is_fqdn: false, label_data: [119, 119, 119, 105, 112, 49, 49, 49, 99, 110], label_ends: [3, 8, 10] }, query_type: A, query_class: IN }]
+2022-03-31T17:28:08.124169+08:00 - reconnecting: NameServerConfig { socket_addr: 192.168.123.1:53, protocol: Udp, tls_dns_name: None, trust_nx_responses: false }
+2022-03-31T17:28:08.124304+08:00 - enqueueing message: [Query { name: Name { is_fqdn: false, label_data: [119, 119, 119, 105, 112, 49, 49, 49, 99, 110], label_ends: [3, 8, 10] }, query_type: A, query_class: IN }]
+2022-03-31T17:28:08.124451+08:00 - querying: www.ip111.cn AAAA
+2022-03-31T17:28:08.124548+08:00 - sending request: [Query { name: Name { is_fqdn: false, label_data: [119, 119, 119, 105, 112, 49, 49, 49, 99, 110], label_ends: [3, 8, 10] }, query_type: AAAA, query_class: IN }]
+2022-03-31T17:28:08.124663+08:00 - existing connection: NameServerConfig { socket_addr: 192.168.123.1:53, protocol: Udp, tls_dns_name: None, trust_nx_responses: false }
+2022-03-31T17:28:08.124741+08:00 - enqueueing message: [Query { name: Name { is_fqdn: false, label_data: [119, 119, 119, 105, 112, 49, 49, 49, 99, 110], label_ends: [3, 8, 10] }, query_type: AAAA, query_class: IN }]
+2022-03-31T17:28:08.125116+08:00 - created socket successfully
+2022-03-31T17:28:08.125283+08:00 - created socket successfully
+2022-03-31T17:28:08.125609+08:00 - CONNECT www.ip111.cn:80
+2022-03-31T17:28:08.125881+08:00 - querying: www.ip111.cn A
+2022-03-31T17:28:08.125972+08:00 - sending request: [Query { name: Name { is_fqdn: false, label_data: [119, 119, 119, 105, 112, 49, 49, 49, 99, 110], label_ends: [3, 8, 10] }, query_type: A, query_class: IN }]
+2022-03-31T17:28:08.126583+08:00 - existing connection: NameServerConfig { socket_addr: 192.168.123.1:53, protocol: Udp, tls_dns_name: None, trust_nx_responses: false }
+2022-03-31T17:28:08.126733+08:00 - enqueueing message: [Query { name: Name { is_fqdn: false, label_data: [119, 119, 119, 105, 112, 49, 49, 49, 99, 110], label_ends: [3, 8, 10] }, query_type: A, query_class: IN }]
+2022-03-31T17:28:08.126927+08:00 - querying: www.ip111.cn AAAA
+2022-03-31T17:28:08.127125+08:00 - sending request: [Query { name: Name { is_fqdn: false, label_data: [119, 119, 119, 105, 112, 49, 49, 49, 99, 110], label_ends: [3, 8, 10] }, query_type: AAAA, query_class: IN }]
+2022-03-31T17:28:08.127242+08:00 - existing connection: NameServerConfig { socket_addr: 192.168.123.1:53, protocol: Udp, tls_dns_name: None, trust_nx_responses: false }
+2022-03-31T17:28:08.127319+08:00 - enqueueing message: [Query { name: Name { is_fqdn: false, label_data: [119, 119, 119, 105, 112, 49, 49, 49, 99, 110], label_ends: [3, 8, 10] }, query_type: AAAA, query_class: IN }]
+2022-03-31T17:28:08.127603+08:00 - created socket successfully
+2022-03-31T17:28:08.127760+08:00 - created socket successfully
+2022-03-31T17:28:08.128172+08:00 - CONNECT pagead2.googlesyndication.com:80
+2022-03-31T17:28:08.128583+08:00 - CONNECT pagead2.googlesyndication.com:443
+2022-03-31T17:28:08.129427+08:00 - CONNECT stackpath.bootstrapcdn.com:443
+2022-03-31T17:28:08.131110+08:00 - CONNECT adservice.google.com:443
+2022-03-31T17:28:08.137969+08:00 - established tcp tunnel 127.0.0.1:50098 <-> pagead2.googlesyndication.com:443 through sever 103.253.43.210:32895 (outbound: 103.253.43.210:32895)
+2022-03-31T17:28:08.157803+08:00 - received message id: 21821
+2022-03-31T17:28:08.157929+08:00 - established tcp tunnel 127.0.0.1:50097 <-> pagead2.googlesyndication.com:80 through sever 103.253.43.210:32895 (outbound: 103.253.43.210:32895)
+2022-03-31T17:28:08.158025+08:00 - established tcp tunnel 127.0.0.1:50096 <-> stackpath.bootstrapcdn.com:443 through sever 103.253.43.210:32895 (outbound: 103.253.43.210:32895)
+2022-03-31T17:28:08.158110+08:00 - established tcp tunnel 127.0.0.1:50095 <-> adservice.google.com:443 through sever 103.253.43.210:32895 (outbound: 103.253.43.210:32895)
+2022-03-31T17:28:08.158213+08:00 - received message id: 65312
+2022-03-31T17:28:08.158341+08:00 - received message id: 38620
+2022-03-31T17:28:08.158392+08:00 - Nameserver responded with NoError and no records
+2022-03-31T17:28:08.158490+08:00 - one of ipv4 or ipv6 lookup failed in ipv4_and_ipv6 strategy: no record found for name: www.ip111.cn. type: AAAA class: IN
+2022-03-31T17:28:08.158668+08:00 - received message id: 50569
+2022-03-31T17:28:08.158817+08:00 - Nameserver responded with NoError and no records
+2022-03-31T17:28:08.158911+08:00 - one of ipv4 or ipv6 lookup failed in ipv4_and_ipv6 strategy: no record found for name: www.ip111.cn. type: AAAA class: IN
+2022-03-31T17:28:08.189246+08:00 - established tcp tunnel 127.0.0.1:50094 <-> www.ip111.cn:80 bypassed
+2022-03-31T17:28:08.189411+08:00 - established tcp tunnel 127.0.0.1:50093 <-> www.ip111.cn:80 bypassed
+2022-03-31T17:28:08.236490+08:00 - CONNECT hm.baidu.com:443
+2022-03-31T17:28:08.238903+08:00 - established tcp tunnel 127.0.0.1:50105 <-> hm.baidu.com:443 through sever 103.253.43.210:32895 (outbound: 103.253.43.210:32895)
+2022-03-31T17:28:08.293953+08:00 - CONNECT sspanel.net:80
+2022-03-31T17:28:08.294365+08:00 - CONNECT 23.80.5.90:80
+2022-03-31T17:28:08.295938+08:00 - established tcp tunnel 127.0.0.1:50108 <-> sspanel.net:80 through sever 103.253.43.210:32895 (outbound: 103.253.43.210:32895)
+2022-03-31T17:28:08.296857+08:00 - established tcp tunnel 127.0.0.1:50107 <-> 23.80.5.90:80 through sever 103.253.43.210:32895 (outbound: 103.253.43.210:32895)
+2022-03-31T17:28:08.297039+08:00 - CONNECT hm.baidu.com:443
+2022-03-31T17:28:08.300461+08:00 - established tcp tunnel 127.0.0.1:50111 <-> hm.baidu.com:443 through sever 103.253.43.210:32895 (outbound: 103.253.43.210:32895)
+2022-03-31T17:28:08.347153+08:00 - CONNECT partner.googleadservices.com:443
+2022-03-31T17:28:08.347922+08:00 - CONNECT adservice.google.com.hk:443
+2022-03-31T17:28:08.349350+08:00 - CONNECT googleads.g.doubleclick.net:443
+2022-03-31T17:28:08.350341+08:00 - established tcp tunnel 127.0.0.1:50113 <-> partner.googleadservices.com:443 through sever 103.253.43.210:32895 (outbound: 103.253.43.210:32895)
+2022-03-31T17:28:08.350735+08:00 - established tcp tunnel 127.0.0.1:50114 <-> adservice.google.com.hk:443 through sever 103.253.43.210:32895 (outbound: 103.253.43.210:32895)
+2022-03-31T17:28:08.351482+08:00 - established tcp tunnel 127.0.0.1:50116 <-> googleads.g.doubleclick.net:443 through sever 103.253.43.210:32895 (outbound: 103.253.43.210:32895)
+2022-03-31T17:28:08.434306+08:00 - CONNECT beacons.gcp.gvt2.com:443
+2022-03-31T17:28:08.438165+08:00 - established tcp tunnel 127.0.0.1:50119 <-> beacons.gcp.gvt2.com:443 through sever 103.253.43.210:32895 (outbound: 103.253.43.210:32895)
+2022-03-31T17:28:08.500573+08:00 - CONNECT hm.baidu.com:443
+2022-03-31T17:28:08.502848+08:00 - established tcp tunnel 127.0.0.1:50121 <-> hm.baidu.com:443 through sever 103.253.43.210:32895 (outbound: 103.253.43.210:32895)
+2022-03-31T17:28:08.784511+08:00 - CONNECT pagead2.googlesyndication.com:443
+2022-03-31T17:28:08.786745+08:00 - established tcp tunnel 127.0.0.1:50123 <-> pagead2.googlesyndication.com:443 through sever 103.253.43.210:32895 (outbound: 103.253.43.210:32895)
+2022-03-31T17:28:09.125599+08:00 - CONNECT tpc.googlesyndication.com:443
+2022-03-31T17:28:09.127583+08:00 - established tcp tunnel 127.0.0.1:50125 <-> tpc.googlesyndication.com:443 through sever 103.253.43.210:32895 (outbound: 103.253.43.210:32895)
+2022-03-31T17:28:19.246903+08:00 - CONNECT clients4.google.com:443
+2022-03-31T17:28:19.254847+08:00 - established tcp tunnel 127.0.0.1:50128 <-> clients4.google.com:443 through sever 103.253.43.210:32895 (outbound: 103.253.43.210:32895)
+2022-03-31T17:28:19.707886+08:00 - CONNECT mtalk.google.com:443
+2022-03-31T17:28:19.716530+08:00 - established tcp tunnel 127.0.0.1:50130 <-> mtalk.google.com:443 through sever 103.253.43.210:32895 (outbound: 103.253.43.210:32895)
+2022-03-31T17:28:29.901634+08:00 - CONNECT www.google.com:443
+2022-03-31T17:28:29.902029+08:00 - CONNECT www.google.com:443
+2022-03-31T17:28:29.911269+08:00 - established tcp tunnel 127.0.0.1:50135 <-> www.google.com:443 through sever 103.253.43.210:32895 (outbound: 103.253.43.210:32895)
+2022-03-31T17:28:29.911658+08:00 - established tcp tunnel 127.0.0.1:50136 <-> www.google.com:443 through sever 103.253.43.210:32895 (outbound: 103.253.43.210:32895)

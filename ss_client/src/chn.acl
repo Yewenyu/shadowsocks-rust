@@ -1,0 +1,6 @@
+[proxy_all]
+
+
+[bypass_list]
+||ipip.net
+||ip111.cn

@@ -1,4 +1,13 @@
-use std::{sync::Mutex, thread};
+use std::{
+    fs::OpenOptions,
+    io::Read,
+    path::{Path, PathBuf},
+    sync::Mutex,
+    thread,
+};
+mod config;
+mod file;
+mod yaml;
 
 mod Client {
     use std::sync::mpsc::{channel, Receiver, Sender};
@@ -18,9 +27,11 @@ mod Client {
                 isStart: false,
             };
         }
+
         pub fn stop(&self) {
             let _ = self.stopSender.send(true);
         }
+
         pub fn canStop(&self) -> bool {
             let receiver = self.stopReceiver.try_recv();
             match receiver {
@@ -28,6 +39,7 @@ mod Client {
                 Err(_) => false,
             }
         }
+
         pub fn update(&mut self) {
             self.isStart = false;
             let (ts, tr) = channel::<bool>();
@@ -46,7 +58,13 @@ lazy_static! {
 }
 
 pub fn ss_start(path: String, re_start: bool) {
-    local::start(path.as_str(), re_start, |ts| {
+    let config = config::SSConfig::load_from_file(path.clone());
+    let acl = if config.acl.is_empty() {
+        None
+    } else {
+        Some(config.acl.as_str())
+    };
+    local::start(path.as_str(), re_start, acl, |ts| {
         let _ = thread::spawn(move || {
             loop {
                 let mut c = client.lock().unwrap();

@@ -11,7 +11,7 @@ path = "src/lib.rs"
 crate-type = ["staticlib"]
 
 [dependencies]
-shadowsocks-rust = { path = "..",features = ["local-tunnel","stream-cipher"]}
+ss_client = { path = "../ss_client"}
 
 
 

@@ -7,6 +7,3 @@ pub mod local;
 pub mod manager;
 #[cfg(feature = "server")]
 pub mod server;
-
-// #[cfg(feature = "v1-stream")]
-pub mod localfromjson;

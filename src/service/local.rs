@@ -27,7 +27,8 @@ use shadowsocks_service::{
 use crate::logging;
 use crate::{
     config::{Config as ServiceConfig, RuntimeMode},
-    monitor, validator,
+    monitor,
+    validator,
 };
 
 /// Defines command line options
@@ -838,7 +839,7 @@ fn launch_reload_server_task(config_path: PathBuf, balancer: PingBalancer) {
 #[cfg(not(unix))]
 fn launch_reload_server_task(_: PathBuf, _: PingBalancer) {}
 
-pub fn start<F: Fn(std::sync::mpsc::Sender<bool>)>(path: &str, restart: bool, stop: F) {
+pub fn start<F: Fn(std::sync::mpsc::Sender<bool>)>(path: &str, restart: bool, aclPath: Option<&str>, stop: F) {
     let (config, runtime) = {
         let config_path_opt = Some(PathBuf::from(path));
 
@@ -918,6 +919,17 @@ pub fn start<F: Fn(std::sync::mpsc::Sender<bool>)>(path: &str, restart: bool, st
                 builder
             }
         };
+
+        if let Some(acl_file) = aclPath {
+            let acl = match AccessControl::load_from_file(acl_file) {
+                Ok(acl) => acl,
+                Err(err) => {
+                    eprintln!("loading ACL \"{}\", {}", acl_file, err);
+                    process::exit(crate::EXIT_CODE_LOAD_ACL_FAILURE);
+                }
+            };
+            config.acl = Some(acl);
+        }
 
         let runtime = builder.enable_all().build().expect("create tokio Runtime");
 

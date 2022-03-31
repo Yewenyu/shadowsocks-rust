@@ -1,8 +1,0 @@
-{
-    "server": "91.245.255.122",
-    "server_port": 40301,
-    "password": "psSMAS76a1YLok7N",
-    "method": "aes-256-gcm",
-    "local_address": "127.0.0.1",
-    "local_port": 7778
-}

@@ -11,6 +11,9 @@ else
 	cargo build --features "local-tun local-redir armv8 neon"
 endif
 
+build-ios:
+	cargo build -p ss_client_c --target aarch64-apple-ios --release
+
 install:
 	install -d ${DESTDIR}${PREFIX}
 	install -m 755 target/${TARGET}/sslocal ${DESTDIR}${PREFIX}/sslocal

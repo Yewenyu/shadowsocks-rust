@@ -1,7 +1,7 @@
 {
-    "server": "103.253.43.210",
-    "server_port": 32895,
-    "password": "ubMwmi4ci5CUqy08",
+    "server": "185.184.223.136",
+    "server_port": 38293,
+    "password": "n54wKXFgK4XS6110",
     "method": "aes-256-gcm",
     "local_address": "127.0.0.1",
     "local_port": 7778,

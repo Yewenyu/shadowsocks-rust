@@ -13,6 +13,7 @@ endif
 
 build-ios:
 	cargo build -p ss_client_c --target aarch64-apple-ios --release
+	open target
 
 install:
 	install -d ${DESTDIR}${PREFIX}

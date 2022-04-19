@@ -1,5 +1,7 @@
 use std::{
+    collections::HashMap,
     fs::File,
+    iter::Map,
     path::{Path, PathBuf},
     str::FromStr,
 };
@@ -9,6 +11,10 @@ use serde::{Deserialize, Serialize};
 use crate::{file, yaml};
 
 #[derive(Serialize, Deserialize)]
+struct Config {
+    pub locals: [Option<SSConfig>; 1],
+}
+#[derive(Serialize, Deserialize, Clone)]
 pub struct SSConfig {
     pub server: String,
     pub server_port: i64,
@@ -23,11 +29,44 @@ pub struct SSConfig {
     pub log: Option<Log>,
 }
 impl SSConfig {
+    fn empty() -> SSConfig {
+        return SSConfig {
+            server: "".to_string(),
+            server_port: 0,
+            password: "".to_string(),
+            method: "".to_string(),
+            local_address: "".to_string(),
+            local_port: 0,
+            mode: "".to_string(),
+            local_udp_address: "".to_string(),
+            local_udp_port: 0,
+            acl: "".to_string(),
+            log: None,
+        };
+    }
+
     pub fn load_from_file(path: String) -> SSConfig {
         let content = file::get_content(path);
-        let config: SSConfig = json5::from_str(&content).unwrap();
-        config.handle_log();
-        return config;
+        let map: SSConfig = json5::from_str(&content).unwrap();
+        // if let Some(Some(some)) = map.locals.get(0) {
+        //     let config = SSConfig {
+        //         server: some.server.clone(),
+        //         server_port: some.server_port,
+        //         password: some.password.clone(),
+        //         method: some.method.clone(),
+        //         local_address: some.local_address.clone(),
+        //         local_port: some.local_port,
+        //         mode: some.mode.clone(),
+        //         local_udp_address: some.local_udp_address.clone(),
+        //         local_udp_port: some.local_udp_port,
+        //         acl: some.acl.clone(),
+        //         log: some.log.clone(),
+        //     };
+        //     return config;
+        // }
+        map.handle_log();
+
+        return map;
     }
 
     fn handle_log(&self) {
@@ -53,14 +92,14 @@ impl SSConfig {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Log {
     pub level: i64,
     pub format: Format,
     pub config_path: String,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Format {
     pub without_time: bool,
 }

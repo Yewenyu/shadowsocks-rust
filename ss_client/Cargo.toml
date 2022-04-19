@@ -8,7 +8,16 @@ edition = "2021"
 
 
 [dependencies]
-shadowsocks-rust = { path = "..",features = ["local","logging"]}
+shadowsocks-rust = { path = "..",default-features = false,features = [
+    "logging",
+    "local-dns",
+    "local-http",
+    "server",
+    "manager",
+    "utility",
+    "service",
+    "multi-threaded",
+    ]}
 lazy_static = "*"
 serde = { version = "1.0", features = ["derive"] }
 json5 = "0.4"

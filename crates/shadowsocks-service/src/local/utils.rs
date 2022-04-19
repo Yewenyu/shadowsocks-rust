@@ -74,20 +74,15 @@ where
 
     match copy_encrypted_bidirectional(svr_cfg.method(), shadow, plain).await {
         Ok((wn, rn)) => {
-            trace!(
+            debug!(
                 "tcp tunnel {} <-> {} (proxied) closed, L2R {} bytes, R2L {} bytes",
-                peer_addr,
-                target_addr,
-                rn,
-                wn
+                peer_addr, target_addr, rn, wn
             );
         }
         Err(err) => {
-            trace!(
+            debug!(
                 "tcp tunnel {} <-> {} (proxied) closed with error: {}",
-                peer_addr,
-                target_addr,
-                err
+                peer_addr, target_addr, err
             );
         }
     }

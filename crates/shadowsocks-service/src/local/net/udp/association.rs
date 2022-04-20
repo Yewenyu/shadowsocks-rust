@@ -23,6 +23,7 @@ use shadowsocks::{
         Address,
     },
 };
+use trust_dns_resolver::proto::{op::Message, rr::RData, serialize::binary::BinDecodable};
 
 use crate::{
     local::{context::ServiceContext, loadbalancing::PingBalancer},
@@ -455,7 +456,7 @@ where
     }
 
     async fn send_received_respond_packet(&mut self, addr: &Address, data: &[u8], bypassed: bool) {
-        trace!(
+        debug!(
             "udp relay {} <- {} ({}) received {} bytes",
             self.peer_addr,
             addr,
@@ -463,6 +464,31 @@ where
             data.len(),
         );
 
+        let msg = Message::from_bytes(data);
+        match msg {
+            Ok(msg) => {
+                debug!("DNS message from {} to {} => {:?}", self.peer_addr, addr, msg);
+                match self.context.acl() {
+                    None => {}
+                    Some(acl) => {
+                        let q = msg.queries().get(0).unwrap();
+
+                        let mut acl = acl.clone();
+                        for r in msg.answers() {
+                            let host = r.name().to_ascii();
+                            if let Some(RData::A(ip)) = r.data() {
+                                let str = ip.to_string();
+                                acl.checkHostAndAddIp(&host, str.as_str());
+                                debug!("host:{},ip:{}", host, str);
+                            }
+                        }
+                    }
+                }
+            }
+            Err(err) => {
+                debug!("Not a DNS packet:{}", err)
+            }
+        }
         // Keep association alive in map
         self.keepalive_flag = true;
 

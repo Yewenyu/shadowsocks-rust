@@ -138,6 +138,30 @@ impl Rules {
         self.rule_set.is_empty() && self.rule_tree.is_empty() && self.rule_regex.is_empty()
     }
 }
+impl Rules {
+    fn add_ipv4_rule(&mut self, rule: impl Into<Ipv4Net>) {
+        let rule = rule.into();
+        trace!("IPV4-RULE {}", rule);
+        self.ipv4.add(rule);
+        self.ipv4.simplify();
+    }
+
+    fn add_ipv6_rule(&mut self, rule: impl Into<Ipv6Net>) {
+        let rule = rule.into();
+        trace!("IPV6-RULE {}", rule);
+        self.ipv6.add(rule);
+        self.ipv6.simplify();
+    }
+
+    fn add_str_rule(&mut self, rule: &str) {
+        let rule = rule.parse::<IpAddr>();
+        match rule {
+            Ok(IpAddr::V4(v4)) => self.add_ipv4_rule(v4),
+            Ok(IpAddr::V6(v6)) => self.add_ipv6_rule(v6),
+            Err(_) => {}
+        }
+    }
+}
 
 struct ParsingRules {
     name: &'static str,
@@ -500,8 +524,17 @@ impl AccessControl {
     ///
     /// This function may perform a DNS resolution
     pub async fn check_target_bypassed(&self, context: &Context, addr: &Address) -> bool {
+        unsafe {
+            if let Some(acl) = &CHANGE_ACL {
+                let value = acl.check_target_bypassed1(context, addr).await;
+                return value;
+            }
+        }
         match *addr {
-            Address::SocketAddress(ref addr) => !self.check_ip_in_proxy_list(&addr.ip()),
+            Address::SocketAddress(ref addr) => {
+                let value = !self.check_ip_in_proxy_list(&addr.ip());
+                return value;
+            }
             // Resolve hostname and check the list
             Address::DomainNameAddress(ref host, port) => {
                 if let Some(value) = self.check_host_in_proxy_list(host) {
@@ -556,6 +589,47 @@ impl AccessControl {
                     }
                 }
 
+                false
+            }
+        }
+    }
+}
+static mut CHANGE_ACL: Option<AccessControl> = None;
+impl AccessControl {
+    pub fn checkHostAndAddIp(&mut self, host: &str, ip: &str) {
+        let mut isChanged = true;
+        if self.white_list.check_host_matched(host) {
+            self.white_list.add_str_rule(ip);
+        } else if self.black_list.check_host_matched(host) {
+            self.black_list.add_str_rule(ip);
+        } else {
+            isChanged = false;
+        }
+        if isChanged {
+            unsafe {
+                CHANGE_ACL = Some(self.clone());
+            }
+        }
+    }
+
+    pub async fn check_target_bypassed1(&self, context: &Context, addr: &Address) -> bool {
+        match *addr {
+            Address::SocketAddress(ref addr) => !self.check_ip_in_proxy_list(&addr.ip()),
+            // Resolve hostname and check the list
+            Address::DomainNameAddress(ref host, port) => {
+                if let Some(value) = self.check_host_in_proxy_list(host) {
+                    return !value;
+                }
+                if self.is_ip_empty() {
+                    return !self.is_default_in_proxy_list();
+                }
+                if let Ok(vaddr) = context.dns_resolve(host, port).await {
+                    for addr in vaddr {
+                        if !self.check_ip_in_proxy_list(&addr.ip()) {
+                            return true;
+                        }
+                    }
+                }
                 false
             }
         }

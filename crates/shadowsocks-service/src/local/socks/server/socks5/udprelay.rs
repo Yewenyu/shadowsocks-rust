@@ -10,7 +10,7 @@ use std::{
 use async_trait::async_trait;
 use byte_string::ByteStr;
 use bytes::{BufMut, BytesMut};
-use log::{error, info, trace};
+use log::{debug, error, info, trace};
 use shadowsocks::{
     lookup_then,
     net::UdpSocket as ShadowUdpSocket,
@@ -139,7 +139,7 @@ impl Socks5UdpServer {
                     let pos = cur.position() as usize;
                     let payload = &data[pos..];
 
-                    info!(
+                    debug!(
                         "UDP ASSOCIATE {} -> {}, {} bytes",
                         peer_addr,
                         header.address,

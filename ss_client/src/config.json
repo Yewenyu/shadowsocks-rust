@@ -1,7 +1,7 @@
 {
     "server": "5.181.4.34",
-    "server_port": 45837,
-    "password": "3Hk1a1KSmBwM8C6d",
+    "server_port": 32895,
+    "password": "5flcQcqiIff37Ee0",
     "method": "aes-256-gcm",
     "local_address": "127.0.0.1",
     "local_port": 7778,
@@ -9,6 +9,14 @@
     "local_udp_address": "127.0.0.1",
     "local_udp_port": 7778,
     "acl": "/Users/xiewenyu/Desktop/rust-project/shadowsocks-rust/ss_client/src/chn.acl",
+    "timeout": 300,
+    "udp_timeout": 300, 
+    "udp_max_associations": 10,
+    "keep_alive": 15,
+    "runtime": {
+        "mode": "multi_thread",
+        "worker_count": 10
+    },
     "log": {
         "level": 0,
         "format": {
@@ -23,4 +31,5 @@
             "local_port": 3128
         }
     ]
+    
 }

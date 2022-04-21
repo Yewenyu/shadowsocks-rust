@@ -1,6 +1,6 @@
 [package]
 name = "shadowsocks-rust"
-version = "1.14.3"
+version = "1.15.0"
 authors = ["Shadowsocks Contributors"]
 description = "shadowsocks is a fast tunnel proxy that helps you bypass firewalls."
 repository = "https://github.com/shadowsocks/shadowsocks-rust"
@@ -128,7 +128,10 @@ stream-cipher = ["shadowsocks-service/stream-cipher"]
 # WARN: These non-standard AEAD ciphers are not officially supported by shadowsocks community
 aead-cipher-extra = ["shadowsocks-service/aead-cipher-extra"]
 
-# Enable detection against replay attack
+# Enable AEAD 2022
+aead-cipher-2022 = ["shadowsocks-service/aead-cipher-2022"]
+
+# Enable detection against replay attack (Stream / AEAD)
 security-replay-attack-detect = ["shadowsocks-service/security-replay-attack-detect"]
 replay-attack-detect = ["security-replay-attack-detect"] # Backward compatibility. DO NOT USE.
 # Enable IV printable prefix
@@ -153,7 +156,7 @@ exitcode = "1"
 build-time = "0.1"
 directories = "4.0"
 xdg = "2.4"
-rpassword = "5.0.1"
+rpassword = "6.0"
 libc = "0.2"
 
 futures = "0.3"
@@ -167,7 +170,7 @@ jemallocator = { version = "0.3", optional = true }
 snmalloc-rs = { version = "0.2", optional = true }
 rpmalloc = { version = "0.2", optional = true }
 
-shadowsocks-service = { version = "1.14.1", path = "./crates/shadowsocks-service" }
+shadowsocks-service = { version = "1.15.0", path = "./crates/shadowsocks-service" }
 
 [target.'cfg(unix)'.dependencies]
 daemonize = "0.4"

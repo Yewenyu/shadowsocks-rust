@@ -9,3 +9,7 @@ pub extern "C" fn ss_client_run(config_path: *const c_char, re_start: bool) -> i
     }
     return 0;
 }
+#[no_mangle]
+pub extern "C" fn ss_client_stop() {
+    ss_client::ss_stop();
+}

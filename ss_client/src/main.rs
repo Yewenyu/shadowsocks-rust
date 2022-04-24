@@ -5,7 +5,7 @@ fn main() {
 
     let configPath = String::from(base_dir.to_str().expect("msg")) + "/ss_client/src/config.json";
     println!("{}", configPath);
-    let newP = configPath.clone();
+    // let newP = configPath.clone();
     // let _ = thread::spawn(move || {
     //     thread::sleep(Duration::from_millis(10000));
     //     ss_client::ss_stop();

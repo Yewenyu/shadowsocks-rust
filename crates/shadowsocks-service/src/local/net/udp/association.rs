@@ -25,7 +25,6 @@ use shadowsocks::{
         Address,
     },
 };
-use trust_dns_resolver::proto::{op::Message, rr::RData, serialize::binary::BinDecodable};
 
 use crate::{
     local::{context::ServiceContext, loadbalancing::PingBalancer},
@@ -566,32 +565,12 @@ where
             if bypassed { "bypassed" } else { "proxied" },
             data.len(),
         );
-
-        let msg = Message::from_bytes(data);
-        match msg {
-            Ok(msg) => {
-                debug!("DNS message from {} to {} => {:?}", self.peer_addr, addr, msg);
-                match self.context.acl() {
-                    None => {}
-                    Some(acl) => {
-                        let q = msg.queries().get(0).unwrap();
-
-                        let mut acl = acl.clone();
-                        for r in msg.answers() {
-                            let host = r.name().to_ascii();
-                            if let Some(RData::A(ip)) = r.data() {
-                                let str = ip.to_string();
-                                acl.checkHostAndAddIp(&host, str.as_str());
-                                debug!("host:{},ip:{}", host, str);
-                            }
-                        }
-                    }
-                }
-            }
-            Err(err) => {
-                debug!("Not a DNS packet:{}", err)
+        {
+            if let Some(acl) = &mut *self.context.acl.lock().await {
+                acl.check_dns_msg(data.clone());
             }
         }
+
         // Keep association alive in map
         self.keepalive_flag = true;
 

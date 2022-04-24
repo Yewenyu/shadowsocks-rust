@@ -54,6 +54,7 @@ use std::{
     path::{Path, PathBuf},
     str::FromStr,
     string::ToString,
+    sync::Arc,
     time::Duration,
 };
 
@@ -69,6 +70,7 @@ use shadowsocks::{
     crypto::CipherKind,
     plugin::PluginConfig,
 };
+use tokio::sync::Mutex;
 #[cfg(feature = "trust-dns")]
 use trust_dns_resolver::config::{NameServerConfig, Protocol, ResolverConfig};
 
@@ -1067,7 +1069,7 @@ pub struct Config {
     pub udp_max_associations: Option<usize>,
 
     /// ACL configuration
-    pub acl: Option<AccessControl>,
+    pub acl: Arc<Mutex<Option<AccessControl>>>,
 
     /// Flow statistic report Unix socket path (only for Android)
     #[cfg(feature = "local-flow-stat")]
@@ -1182,7 +1184,7 @@ impl Config {
             udp_timeout: None,
             udp_max_associations: None,
 
-            acl: None,
+            acl: Arc::new(Mutex::new(None)),
 
             #[cfg(feature = "local-flow-stat")]
             stat_path: None,

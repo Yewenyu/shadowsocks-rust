@@ -15,6 +15,7 @@ use shadowsocks::net::{AcceptOpts, ConnectOpts};
 use tokio::task::JoinHandle;
 
 use crate::{
+    acl::AccessControl,
     config::{Config, ConfigType},
     dns::build_dns_resolver,
 };
@@ -91,7 +92,11 @@ pub async fn run(config: Config) -> io::Result<()> {
         .await
         .map(Arc::new);
 
-    let acl = config.acl.map(Arc::new);
+    let mut acl: Option<Arc<AccessControl>> = None;
+    {
+        let v = config.acl.lock().await;
+        acl = v.clone().map(Arc::new);
+    }
 
     for svr_cfg in config.server {
         let mut server = Server::new(svr_cfg);

@@ -1,11 +1,17 @@
 //! Local server launchers
 
-use std::{net::IpAddr, path::PathBuf, process, sync::mpsc::channel, time::Duration};
+use std::{
+    net::IpAddr,
+    path::PathBuf,
+    process,
+    sync::{mpsc::channel, Arc},
+    time::Duration,
+};
 
 use clap::{App, Arg, ArgGroup, ArgMatches, ErrorKind as ClapErrorKind};
 use futures::future::{self, Either};
 use log::{info, trace};
-use tokio::{self, runtime::Builder};
+use tokio::{self, runtime::Builder, sync::Mutex};
 
 #[cfg(feature = "local-redir")]
 use shadowsocks_service::config::RedirType;
@@ -678,7 +684,7 @@ pub fn main(matches: &ArgMatches) {
                     process::exit(crate::EXIT_CODE_LOAD_ACL_FAILURE);
                 }
             };
-            config.acl = Some(acl);
+            config.acl = Arc::new(Mutex::new(Some(acl)));
         }
 
         if let Some(dns) = matches.value_of("DNS") {
@@ -930,7 +936,7 @@ pub fn start<F: Fn(std::sync::mpsc::Sender<bool>)>(path: &str, restart: bool, ac
                     process::exit(crate::EXIT_CODE_LOAD_ACL_FAILURE);
                 }
             };
-            config.acl = Some(acl);
+            config.acl = Arc::new(Mutex::new(Some(acl)));
         }
 
         let runtime = builder.enable_all().build().expect("create tokio Runtime");

@@ -8,6 +8,7 @@ use log::trace;
 use shadowsocks::net::{AcceptOpts, ConnectOpts};
 
 use crate::{
+    acl::AccessControl,
     config::{Config, ConfigType},
     dns::build_dns_resolver,
     server::SERVER_DEFAULT_KEEPALIVE_TIMEOUT,
@@ -77,7 +78,12 @@ pub async fn run(config: Config) -> io::Result<()> {
         manager.set_udp_expiry_duration(d);
     }
 
-    if let Some(acl) = config.acl {
+    let mut acl: Option<AccessControl> = None;
+    {
+        acl = config.acl.lock().await.clone();
+    }
+
+    if let Some(acl) = acl {
         manager.set_acl(Arc::new(acl));
     }
 

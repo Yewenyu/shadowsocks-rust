@@ -1,11 +1,11 @@
 //! Server launchers
 
-use std::{net::IpAddr, path::PathBuf, process, time::Duration};
+use std::{net::IpAddr, path::PathBuf, process, sync::Arc, time::Duration};
 
 use clap::{Arg, ArgGroup, ArgMatches, Command, ErrorKind as ClapErrorKind};
 use futures::future::{self, Either};
 use log::{info, trace};
-use tokio::{self, runtime::Builder};
+use tokio::{self, runtime::Builder, sync::Mutex};
 
 use shadowsocks_service::{
     acl::AccessControl,
@@ -384,7 +384,7 @@ pub fn main(matches: &ArgMatches) {
                     process::exit(crate::EXIT_CODE_LOAD_ACL_FAILURE);
                 }
             };
-            config.acl = Some(acl);
+            config.acl = Arc::new(Mutex::new(Some(acl)));
         }
 
         if let Some(dns) = matches.value_of("DNS") {

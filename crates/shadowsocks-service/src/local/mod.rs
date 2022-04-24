@@ -167,9 +167,7 @@ pub async fn create(config: Config) -> io::Result<Server> {
         context.set_ipv6_first(config.ipv6_first);
     }
 
-    if let Some(acl) = config.acl {
-        context.set_acl(acl);
-    }
+    context.set_acl(config.acl);
 
     context.set_security_config(&config.security);
 

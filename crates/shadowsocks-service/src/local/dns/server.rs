@@ -324,7 +324,7 @@ fn check_name_in_proxy_list(acl: &AccessControl, name: &Name) -> Option<bool> {
 }
 
 /// given the query, determine whether remote/local query should be used, or inconclusive
-fn should_forward_by_query(context: &ServiceContext, balancer: &PingBalancer, query: &Query) -> Option<bool> {
+async fn should_forward_by_query(context: &ServiceContext, balancer: &PingBalancer, query: &Query) -> Option<bool> {
     // Check if we are trying to make queries for remote servers
     //
     // This happens normally because VPN or TUN device receives DNS queries from local servers' plugins
@@ -344,8 +344,9 @@ fn should_forward_by_query(context: &ServiceContext, balancer: &PingBalancer, qu
             }
         }
     }
+    let mut acl = &mut *context.acl.lock().await;
 
-    if let Some(acl) = context.acl() {
+    if let Some(acl) = acl {
         if query.query_class() != DNSClass::IN {
             // unconditionally use default for all non-IN queries
             Some(acl.is_default_in_proxy_list())
@@ -516,7 +517,7 @@ impl DnsClient {
         // Start querying name servers
         debug!("DNS lookup {:?} {}", query.query_type(), query.name());
 
-        match should_forward_by_query(&self.context, &self.balancer, query) {
+        match should_forward_by_query(&self.context, &self.balancer, query).await {
             Some(true) => {
                 let remote_response = self.lookup_remote(query, remote_addr).await;
                 trace!("pick remote response (query): {:?}", remote_response);
@@ -532,7 +533,10 @@ impl DnsClient {
 
         let decider = async {
             let local_response = self.lookup_local(query, local_addr).await;
-            if should_forward_by_response(self.context.acl(), &local_response, query) {
+
+            let acl = &mut *self.context.acl.lock().await;
+
+            if should_forward_by_response(acl.as_ref(), &local_response, query) {
                 None
             } else {
                 Some(local_response)

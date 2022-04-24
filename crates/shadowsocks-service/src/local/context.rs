@@ -25,7 +25,7 @@ pub struct ServiceContext {
     accept_opts: AcceptOpts,
 
     // Access Control
-    acl: Option<AccessControl>,
+    pub acl: Arc<Mutex<Option<AccessControl>>>,
 
     // Flow statistic report
     flow_stat: Arc<FlowStat>,
@@ -48,7 +48,7 @@ impl ServiceContext {
             context: Context::new_shared(ServerType::Local),
             connect_opts: ConnectOpts::default(),
             accept_opts: AcceptOpts::default(),
-            acl: None,
+            acl: Arc::new(Mutex::new(None)),
             flow_stat: Arc::new(FlowStat::new()),
             #[cfg(feature = "local-dns")]
             reverse_lookup_cache: Mutex::new(LruCache::with_expiry_duration_and_capacity(
@@ -89,14 +89,14 @@ impl ServiceContext {
     }
 
     /// Set Access Control List
-    pub fn set_acl(&mut self, acl: AccessControl) {
-        self.acl = Some(acl);
+    pub fn set_acl(&mut self, acl: Arc<Mutex<Option<AccessControl>>>) {
+        self.acl = acl;
     }
 
     /// Get Access Control List reference
-    pub fn acl(&self) -> Option<&AccessControl> {
-        self.acl.as_ref()
-    }
+    // pub fn acl(&self) -> Option<&AccessControl> {
+    //     self.acl.as_ref()
+    // }
 
     /// Get cloned flow statistic
     pub fn flow_stat(&self) -> Arc<FlowStat> {
@@ -121,7 +121,8 @@ impl ServiceContext {
 
     /// Check if target should be bypassed
     pub async fn check_target_bypassed(&self, addr: &Address) -> bool {
-        match self.acl {
+        let mut acl = self.acl.lock().await;
+        match &mut *acl {
             None => false,
             Some(ref acl) => {
                 #[cfg(feature = "local-dns")]
@@ -144,8 +145,9 @@ impl ServiceContext {
     /// Add a record to the reverse lookup cache
     #[cfg(feature = "local-dns")]
     pub async fn add_to_reverse_lookup_cache(&self, addr: IpAddr, forward: bool) {
+        let mut acl = self.acl.lock().await;
         let is_exception = forward
-            != match self.acl {
+            != match &mut *acl {
                 // Proxy everything by default
                 None => true,
                 Some(ref a) => a.check_ip_in_proxy_list(&addr),

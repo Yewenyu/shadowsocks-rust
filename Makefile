@@ -14,7 +14,7 @@ endif
 build-ios:
 	cargo build -p ss_client_c --target aarch64-apple-ios --release
 	cbindgen --config ss_client_c/cbindgen.toml ss_client_c/src/lib.rs > target/aarch64-apple-ios/release/ss_client_c.h
-	open target
+	open target/aarch64-apple-ios/release
 
 install:
 	install -d ${DESTDIR}${PREFIX}

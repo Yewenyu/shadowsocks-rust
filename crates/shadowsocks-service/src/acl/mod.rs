@@ -11,15 +11,17 @@ use std::{
     net::{IpAddr, SocketAddr},
     path::{Path, PathBuf},
     str,
+    sync::{Arc, Mutex},
 };
 
 use ipnet::{IpNet, Ipv4Net, Ipv6Net};
 use iprange::IpRange;
-use log::{trace, warn};
+use log::{debug, trace, warn};
 use once_cell::sync::Lazy;
 use regex::bytes::{Regex, RegexBuilder, RegexSet, RegexSetBuilder};
 
 use shadowsocks::{context::Context, relay::socks5::Address};
+use trust_dns_resolver::proto::{op::Message, rr::RData, serialize::binary::BinDecodable};
 
 use self::sub_domains_tree::SubDomainsTree;
 
@@ -534,12 +536,9 @@ impl AccessControl {
     ///
     /// This function may perform a DNS resolution
     pub async fn check_target_bypassed(&self, context: &Context, addr: &Address) -> bool {
-        unsafe {
-            if let Some(acl) = &CHANGE_ACL {
-                let value = acl.check_target_bypassed1(context, addr).await;
-                return value;
-            }
-        }
+        // if AccessControl::check_bypassed(context, addr).await {
+        //     return true;
+        // }
         match *addr {
             Address::SocketAddress(ref addr) => {
                 let value = !self.check_ip_in_proxy_list(&addr.ip());
@@ -604,22 +603,53 @@ impl AccessControl {
         }
     }
 }
-static mut CHANGE_ACL: Option<AccessControl> = None;
+
 impl AccessControl {
-    pub fn checkHostAndAddIp(&mut self, host: &str, ip: &str) {
-        let mut isChanged = true;
-        if self.white_list.check_host_matched(host) {
-            self.white_list.add_str_rule(ip);
-        } else if self.black_list.check_host_matched(host) {
-            self.black_list.add_str_rule(ip);
-        } else {
-            isChanged = false;
-        }
-        if isChanged {
-            unsafe {
-                CHANGE_ACL = Some(self.clone());
+    pub fn check_dns_msg(&mut self, data: &[u8]) {
+        let msg = Message::from_bytes(data);
+        match msg {
+            Ok(msg) => {
+                for r in msg.answers() {
+                    let host = r.name().to_ascii();
+                    if let Some(RData::A(ip)) = r.data() {
+                        let str = ip.to_string();
+                        self.checkHostAndAddIp(&host, str.as_str());
+                    } else if let Some(RData::HTTPS(http)) = r.data() {
+                        for (_, value) in http.svc_params() {
+                            match value {
+                                trust_dns_resolver::proto::rr::rdata::svcb::SvcParamValue::Ipv4Hint(value) => {
+                                    let vec = value.0.clone();
+                                    for v in vec {
+                                        let ip = v.to_string();
+                                        self.checkHostAndAddIp(&host, ip.as_str());
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+            }
+            Err(err) => {
+                debug!("Not a DNS packet:{}", err)
             }
         }
+    }
+
+    pub fn checkHostAndAddIp(&mut self, host: &str, ip: &str) {
+        // return;
+        let mut des = "None";
+        if host.contains("ipip.net") {
+            print!("");
+        }
+        if self.white_list.check_host_matched(host) {
+            self.white_list.add_str_rule(ip);
+            des = "proxyed";
+        } else if self.black_list.check_host_matched(host) {
+            self.black_list.add_str_rule(ip);
+            des = "bypassed"
+        }
+        debug!("checkHostAndAddIp,host:{},ip:{},{}", host, ip, des);
     }
 
     pub async fn check_target_bypassed1(&self, context: &Context, addr: &Address) -> bool {

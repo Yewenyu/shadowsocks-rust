@@ -70,6 +70,8 @@ aead-cipher-extra = ["shadowsocks/aead-cipher-extra"]
 
 # Enable AEAD 2022
 aead-cipher-2022 = ["shadowsocks/aead-cipher-2022"]
+# Enable AEAD 2022 with extra ciphers
+aead-cipher-2022-extra = ["shadowsocks/aead-cipher-2022-extra"]
 
 # Enable detection against replay attack
 security-replay-attack-detect = ["shadowsocks/security-replay-attack-detect"]
@@ -108,6 +110,7 @@ async-trait = "0.1"
 
 socket2 = { version = "0.4", features = ["all"] }
 libc = "0.2"
+num_cpus = "1.13"
 
 hyper = { version = "0.14.16", optional = true, features = ["full"] }
 tower = { version = "0.4", optional = true }

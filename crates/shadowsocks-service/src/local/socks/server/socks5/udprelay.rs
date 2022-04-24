@@ -147,7 +147,7 @@ impl Socks5UdpServer {
                     );
 
                     if let Err(err) = manager.send_to(peer_addr, header.address, payload).await {
-                        error!(
+                        debug!(
                             "udp packet from {} relay {} bytes failed, error: {}",
                             peer_addr,
                             data.len(),

@@ -5,14 +5,16 @@ use std::{
     net::SocketAddr,
     ops::{Deref, DerefMut},
     pin::Pin,
-    sync::Arc,
+    sync::{
+        mpsc::{channel, Sender},
+        Arc,
+    },
     task::{self, Poll},
     thread,
 };
 
 use futures::executor::block_on;
 use log::debug;
-use nix::sys::socket::SockAddr;
 use pin_project::pin_project;
 use shadowsocks::{
     net::TcpStream,
@@ -160,7 +162,7 @@ impl AutoProxyClientStream {
         }
     }
 
-    async fn check_dns_msg(para: &ProxyPara, data: Vec<u8>) {
+    async fn check_dns_msg(para: &ProxyPara, data: &[u8], endnoti: Sender<bool>) {
         let lenbyte = &data[0..2];
         let len: u16 = ((lenbyte[0] as u16) << 2) + (lenbyte[1] as u16);
         let s = len as usize;
@@ -183,6 +185,7 @@ impl AutoProxyClientStream {
             }
             None => {}
         }
+        endnoti.send(true);
     }
 }
 
@@ -207,12 +210,13 @@ impl AsyncRead for AutoProxyClientStream {
                 let para = cpara.unwrap();
                 if para.is_dns {
                     let data = buf.filled();
-                    let mut nd: Vec<u8> = Vec::new();
+
                     if data.len() > 2 {
-                        for d in data {
-                            nd.push(*d);
-                        }
-                        block_on(AutoProxyClientStream::check_dns_msg(para, nd.clone()));
+                        let (ts, tr) = channel::<bool>();
+                        // let noti = ts.clone();
+                        block_on(AutoProxyClientStream::check_dns_msg(para, data, ts));
+                        _ = tr.recv().unwrap();
+                        debug!("check dns end");
                     }
                 }
             }

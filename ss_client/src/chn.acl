@@ -3,4 +3,6 @@
 
 [bypass_list]
 (^|\.)ipip\.net
+(^|\.)ip111\.cn
+(^|\.)ipinfo\.io
 

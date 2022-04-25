@@ -1,7 +1,7 @@
 {
     "server": "45.88.42.58",
-    "server_port": 46693,
-    "password": "4y04YifEs4S36Mtu",
+    "server_port": 46117,
+    "password": "yu225nzGAAJynEZf",
     "method": "aes-256-gcm",
     "local_address": "127.0.0.1",
     "local_port": 7778,

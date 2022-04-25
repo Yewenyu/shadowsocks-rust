@@ -605,7 +605,7 @@ impl AccessControl {
 }
 
 impl AccessControl {
-    pub fn check_dns_msg(&mut self, data: &[u8]) {
+    pub fn check_dns_msg(&mut self, data: &[u8]) -> bool {
         let msg = Message::from_bytes(data);
         match msg {
             Ok(msg) => {
@@ -629,9 +629,11 @@ impl AccessControl {
                         }
                     }
                 }
+                return true;
             }
             Err(err) => {
-                debug!("Not a DNS packet:{}", err)
+                debug!("Not a DNS packet:{}", err);
+                return false;
             }
         }
     }

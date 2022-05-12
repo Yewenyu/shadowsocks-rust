@@ -2,7 +2,7 @@
     "server": "45.88.42.58",
     "server_port": 46117,
     "password": "yu225nzGAAJynEZf",
-    "method": "aes-256-gcm",
+    "method": "aes-256-cfb",
     "local_address": "127.0.0.1",
     "local_port": 7778,
     "mode": "tcp_and_udp",

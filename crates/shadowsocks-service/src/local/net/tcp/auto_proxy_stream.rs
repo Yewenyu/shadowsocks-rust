@@ -167,21 +167,13 @@ impl AutoProxyClientStream {
         let len: u16 = ((lenbyte[0] as u16) << 2) + (lenbyte[1] as u16);
         let s = len as usize;
         let ss = 2..(s + 2);
-        let mut data = &data[ss];
-        let byte = &mut *para.dnsByte.lock().await;
-        if byte.len() > 0 {
-            byte.append(&mut data.to_vec());
-            data = byte;
-        } else {
-            byte.append(&mut data.to_vec());
-        }
+        let data = &data[ss];
         let context = para.context.clone();
         let acl = &mut *context.acl.lock().await;
         match acl {
             Some(acl) => {
-                if acl.check_dns_msg(data) {
-                    byte.clear();
-                }
+                debug!("tcp dns check");
+                acl.check_dns_msg(data);
             }
             None => {}
         }
@@ -191,7 +183,6 @@ impl AutoProxyClientStream {
 
 impl AsyncRead for AutoProxyClientStream {
     fn poll_read(self: Pin<&mut Self>, cx: &mut task::Context<'_>, buf: &mut ReadBuf<'_>) -> Poll<io::Result<()>> {
-        let mut isDns = false;
         let mut cpara: Option<&mut ProxyPara> = None;
         let result: Poll<io::Result<()>> = match self.project() {
             AutoProxyClientStreamProj::Proxied { para, stream: s } => {
@@ -210,7 +201,6 @@ impl AsyncRead for AutoProxyClientStream {
                 let para = cpara.unwrap();
                 if para.is_dns {
                     let data = buf.filled();
-
                     if data.len() > 2 {
                         let (ts, tr) = channel::<bool>();
                         // let noti = ts.clone();

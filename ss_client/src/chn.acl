@@ -1,8 +1,6 @@
 [proxy_all]
 
-
 [bypass_list]
-(^|\.)ipip\.net
 (^|\.)ip111\.cn
-(^|\.)ipinfo\.io
-
+(^|\.)ipip\.net
+[proxy_list]

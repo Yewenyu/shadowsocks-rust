@@ -567,7 +567,8 @@ where
         );
         {
             if let Some(acl) = &mut *self.context.acl.lock().await {
-                acl.check_dns_msg(data.clone());
+                debug!("udp dns check");
+                acl.check_dns_msg(data);
             }
         }
 

@@ -17,6 +17,7 @@ shadowsocks-rust = { path = "..",default-features = false,features = [
     "utility",
     "service",
     "multi-threaded",
+    "stream-cipher",
     ]}
 lazy_static = "*"
 serde = { version = "1.0", features = ["derive"] }

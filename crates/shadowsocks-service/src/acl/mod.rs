@@ -609,8 +609,8 @@ impl AccessControl {
         let msg = Message::from_bytes(data);
         match msg {
             Ok(msg) => {
+                let host = msg.queries().get(0).unwrap().name().to_ascii();
                 for r in msg.answers() {
-                    let host = r.name().to_ascii();
                     if let Some(RData::A(ip)) = r.data() {
                         let str = ip.to_string();
                         self.checkHostAndAddIp(&host, str.as_str());

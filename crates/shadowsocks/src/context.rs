@@ -35,7 +35,7 @@ impl Context {
     pub fn new(config_type: ServerType) -> Context {
         Context {
             replay_protector: ReplayProtector::new(config_type),
-            replay_policy: ReplayAttackPolicy::Reject,
+            replay_policy: ReplayAttackPolicy::Default,
             dns_resolver: Arc::new(DnsResolver::system_resolver()),
             ipv6_first: false,
         }
@@ -73,14 +73,11 @@ impl Context {
             {
                 const SECURITY_PRINTABLE_PREFIX_LEN: usize = 6;
                 if nonce.len() >= SECURITY_PRINTABLE_PREFIX_LEN {
-                    use rand::Rng;
+                    // Printable characters use base64 letters instead
+                    static ASCII_PRINTABLE_CHARS: &[u8] = br##"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz+/"##;
 
-                    // Printable characters follows definition of isprint in C/C++
-                    static ASCII_PRINTABLE_CHARS: &[u8] = br##"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz!"#$%&'()*+,-./:;<=>?@[\]^_`{|}~ "##;
-
-                    let mut rng = rand::thread_rng();
                     for b in nonce.iter_mut().take(SECURITY_PRINTABLE_PREFIX_LEN) {
-                        *b = ASCII_PRINTABLE_CHARS[rng.gen_range::<usize, _>(0..ASCII_PRINTABLE_CHARS.len())];
+                        *b = ASCII_PRINTABLE_CHARS[(*b as usize) % ASCII_PRINTABLE_CHARS.len()];
                     }
                 }
             }
@@ -100,8 +97,17 @@ impl Context {
             return Ok(());
         }
 
-        match self.replay_policy {
-            ReplayAttackPolicy::Ignore => Ok(()),
+        #[allow(unused_mut)]
+        let mut replay_policy = self.replay_policy;
+
+        #[cfg(feature = "aead-cipher-2022")]
+        if method.is_aead_2022() {
+            // AEAD-2022 can't be ignored.
+            replay_policy = ReplayAttackPolicy::Reject;
+        }
+
+        match replay_policy {
+            ReplayAttackPolicy::Default | ReplayAttackPolicy::Ignore => Ok(()),
             ReplayAttackPolicy::Detect => {
                 if self.replay_protector.check_nonce_and_set(method, nonce) {
                     warn!("detected repeated nonce (iv/salt) {:?}", ByteStr::new(nonce));
@@ -156,4 +162,21 @@ impl Context {
     pub fn replay_attack_policy(&self) -> ReplayAttackPolicy {
         self.replay_policy
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::config::ServerType;
+    use crate::context::Context;
+    use byte_string::ByteStr;
+    use shadowsocks_crypto::CipherKind;
+
+    #[test]
+    fn generate_nonce() {
+        let mut salt = vec![0u8; 64];
+        let context = Context::new(ServerType::Server);
+        context.generate_nonce(CipherKind::AES_128_GCM, &mut salt, false);
+        println!("generate nonce printable ascii: {:?}", ByteStr::new(&salt));
+    }
+
 }

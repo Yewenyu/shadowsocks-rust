@@ -1,11 +1,11 @@
 //! Server Manager launchers
 
-use std::{net::IpAddr, path::PathBuf, process, sync::Arc, time::Duration};
+use std::{net::IpAddr, path::PathBuf, process, time::Duration};
 
 use clap::{Arg, ArgGroup, ArgMatches, Command, ErrorKind as ClapErrorKind};
 use futures::future::{self, Either};
 use log::{info, trace};
-use tokio::{self, runtime::Builder, sync::Mutex};
+use tokio::{self, runtime::Builder};
 
 #[cfg(unix)]
 use shadowsocks_service::config::ManagerServerMode;
@@ -378,7 +378,7 @@ pub fn main(matches: &ArgMatches) {
                     process::exit(crate::EXIT_CODE_LOAD_ACL_FAILURE);
                 }
             };
-            config.acl = Arc::new(Mutex::new(Some(acl)));
+            config.acl = Some(acl);
         }
 
         if let Some(dns) = matches.value_of("DNS") {

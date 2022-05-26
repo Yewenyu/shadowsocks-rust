@@ -324,7 +324,12 @@ fn check_name_in_proxy_list(acl: &AccessControl, name: &Name) -> Option<bool> {
 }
 
 /// given the query, determine whether remote/local query should be used, or inconclusive
-async fn should_forward_by_query(context: &ServiceContext, balancer: &PingBalancer, query: &Query) -> Option<bool> {
+fn should_forward_by_query(context: &ServiceContext, balancer: &PingBalancer, query: &Query) -> Option<bool> {
+    // No server was configured, then always resolve with local
+    if balancer.is_empty() {
+        return Some(false);
+    }
+
     // Check if we are trying to make queries for remote servers
     //
     // This happens normally because VPN or TUN device receives DNS queries from local servers' plugins
@@ -344,9 +349,8 @@ async fn should_forward_by_query(context: &ServiceContext, balancer: &PingBalanc
             }
         }
     }
-    let mut acl = &mut *context.acl.lock().await;
 
-    if let Some(acl) = acl {
+    if let Some(acl) = context.acl() {
         if query.query_class() != DNSClass::IN {
             // unconditionally use default for all non-IN queries
             Some(acl.is_default_in_proxy_list())
@@ -517,7 +521,7 @@ impl DnsClient {
         // Start querying name servers
         debug!("DNS lookup {:?} {}", query.query_type(), query.name());
 
-        match should_forward_by_query(&self.context, &self.balancer, query).await {
+        match should_forward_by_query(&self.context, &self.balancer, query) {
             Some(true) => {
                 let remote_response = self.lookup_remote(query, remote_addr).await;
                 trace!("pick remote response (query): {:?}", remote_response);
@@ -533,10 +537,7 @@ impl DnsClient {
 
         let decider = async {
             let local_response = self.lookup_local(query, local_addr).await;
-
-            let acl = &mut *self.context.acl.lock().await;
-
-            if should_forward_by_response(acl.as_ref(), &local_response, query) {
+            if should_forward_by_response(self.context.acl(), &local_response, query) {
                 None
             } else {
                 Some(local_response)

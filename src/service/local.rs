@@ -1,17 +1,11 @@
 //! Local server launchers
 
-use std::{
-    net::IpAddr,
-    path::PathBuf,
-    process,
-    sync::{mpsc::channel, Arc},
-    time::Duration,
-};
+use std::{net::IpAddr, path::PathBuf, process, sync::mpsc::channel, time::Duration};
 
-use clap::{App, Arg, ArgGroup, ArgMatches, ErrorKind as ClapErrorKind};
+use clap::{Arg, ArgGroup, ArgMatches, Command, ErrorKind as ClapErrorKind};
 use futures::future::{self, Either};
 use log::{info, trace};
-use tokio::{self, runtime::Builder, sync::Mutex};
+use tokio::{self, runtime::Builder};
 
 #[cfg(feature = "local-redir")]
 use shadowsocks_service::config::RedirType;
@@ -38,7 +32,7 @@ use crate::{
 };
 
 /// Defines command line options
-pub fn define_command_line_options(mut app: App<'_>) -> App<'_> {
+pub fn define_command_line_options(mut app: Command<'_>) -> Command<'_> {
     app = app.arg(
         Arg::new("CONFIG")
             .short('c')
@@ -422,23 +416,29 @@ pub fn main(matches: &ArgMatches) {
         };
 
         if let Some(svr_addr) = matches.value_of("SERVER_ADDR") {
+            let method = matches.value_of_t_or_exit::<CipherKind>("ENCRYPT_METHOD");
+
             let password = match matches.value_of_t::<String>("PASSWORD") {
                 Ok(pwd) => read_variable_field_value(&pwd).into(),
                 Err(err) => {
                     // NOTE: svr_addr should have been checked by crate::validator
-                    match crate::password::read_server_password(svr_addr) {
-                        Ok(pwd) => pwd,
-                        Err(..) => err.exit(),
+                    if method.is_none() {
+                        // If method doesn't need a key (none, plain), then we can leave it empty
+                        String::new()
+                    } else {
+                        match crate::password::read_server_password(svr_addr) {
+                            Ok(pwd) => pwd,
+                            Err(..) => err.exit(),
+                        }
                     }
                 }
             };
 
-            let method = matches.value_of_t_or_exit::<CipherKind>("ENCRYPT_METHOD");
             let svr_addr = svr_addr.parse::<ServerAddr>().expect("server-addr");
 
             let timeout = match matches.value_of_t::<u64>("TIMEOUT") {
                 Ok(t) => Some(Duration::from_secs(t)),
-                Err(ref err) if err.kind == ClapErrorKind::ArgumentNotFound => None,
+                Err(ref err) if err.kind() == ClapErrorKind::ArgumentNotFound => None,
                 Err(err) => err.exit(),
             };
 
@@ -462,7 +462,7 @@ pub fn main(matches: &ArgMatches) {
 
         match matches.value_of_t::<ServerConfig>("URL") {
             Ok(svr_addr) => config.server.push(svr_addr),
-            Err(ref err) if err.kind == ClapErrorKind::ArgumentNotFound => {}
+            Err(ref err) if err.kind() == ClapErrorKind::ArgumentNotFound => {}
             Err(err) => err.exit(),
         }
 
@@ -500,7 +500,7 @@ pub fn main(matches: &ArgMatches) {
             let mut local_config = LocalConfig::new(protocol);
             match matches.value_of_t::<ServerAddr>("LOCAL_ADDR") {
                 Ok(local_addr) => local_config.addr = Some(local_addr),
-                Err(ref err) if err.kind == ClapErrorKind::ArgumentNotFound => {
+                Err(ref err) if err.kind() == ClapErrorKind::ArgumentNotFound => {
                     #[cfg(feature = "local-tun")]
                     if protocol == ProtocolType::Tun {
                         // `tun` protocol doesn't need --local-addr
@@ -513,14 +513,14 @@ pub fn main(matches: &ArgMatches) {
 
             match matches.value_of_t::<ServerAddr>("UDP_BIND_ADDR") {
                 Ok(udp_bind_addr) => local_config.udp_addr = Some(udp_bind_addr),
-                Err(ref err) if err.kind == ClapErrorKind::ArgumentNotFound => {}
+                Err(ref err) if err.kind() == ClapErrorKind::ArgumentNotFound => {}
                 Err(err) => err.exit(),
             }
 
             #[cfg(feature = "local-tunnel")]
             match matches.value_of_t::<Address>("FORWARD_ADDR") {
                 Ok(addr) => local_config.forward_addr = Some(addr),
-                Err(ref err) if err.kind == ClapErrorKind::ArgumentNotFound => {}
+                Err(ref err) if err.kind() == ClapErrorKind::ArgumentNotFound => {}
                 Err(err) => err.exit(),
             }
 
@@ -528,13 +528,13 @@ pub fn main(matches: &ArgMatches) {
             {
                 match matches.value_of_t::<RedirType>("TCP_REDIR") {
                     Ok(tcp_redir) => local_config.tcp_redir = tcp_redir,
-                    Err(ref err) if err.kind == ClapErrorKind::ArgumentNotFound => {}
+                    Err(ref err) if err.kind() == ClapErrorKind::ArgumentNotFound => {}
                     Err(err) => err.exit(),
                 }
 
                 match matches.value_of_t::<RedirType>("UDP_REDIR") {
                     Ok(udp_redir) => local_config.udp_redir = udp_redir,
-                    Err(ref err) if err.kind == ClapErrorKind::ArgumentNotFound => {}
+                    Err(ref err) if err.kind() == ClapErrorKind::ArgumentNotFound => {}
                     Err(err) => err.exit(),
                 }
             }
@@ -568,13 +568,13 @@ pub fn main(matches: &ArgMatches) {
 
                 match matches.value_of_t::<NameServerAddr>("LOCAL_DNS_ADDR") {
                     Ok(addr) => local_config.local_dns_addr = Some(addr),
-                    Err(ref err) if err.kind == ClapErrorKind::ArgumentNotFound => {}
+                    Err(ref err) if err.kind() == ClapErrorKind::ArgumentNotFound => {}
                     Err(err) => err.exit(),
                 }
 
                 match matches.value_of_t::<RemoteDnsAddress>("REMOTE_DNS_ADDR") {
                     Ok(addr) => local_config.remote_dns_addr = Some(addr.0),
-                    Err(ref err) if err.kind == ClapErrorKind::ArgumentNotFound => {}
+                    Err(ref err) if err.kind() == ClapErrorKind::ArgumentNotFound => {}
                     Err(err) => err.exit(),
                 }
             }
@@ -594,7 +594,7 @@ pub fn main(matches: &ArgMatches) {
 
                         config.local.push(local_dns_config);
                     }
-                    Err(ref err) if err.kind == ClapErrorKind::ArgumentNotFound => {}
+                    Err(ref err) if err.kind() == ClapErrorKind::ArgumentNotFound => {}
                     Err(err) => err.exit(),
                 }
             }
@@ -605,19 +605,19 @@ pub fn main(matches: &ArgMatches) {
 
                 match matches.value_of_t::<IpNet>("TUN_INTERFACE_ADDRESS") {
                     Ok(tun_address) => local_config.tun_interface_address = Some(tun_address),
-                    Err(ref err) if err.kind == ClapErrorKind::ArgumentNotFound => {}
+                    Err(ref err) if err.kind() == ClapErrorKind::ArgumentNotFound => {}
                     Err(err) => err.exit(),
                 }
                 match matches.value_of_t::<String>("TUN_INTERFACE_NAME") {
                     Ok(tun_name) => local_config.tun_interface_name = Some(tun_name),
-                    Err(ref err) if err.kind == ClapErrorKind::ArgumentNotFound => {}
+                    Err(ref err) if err.kind() == ClapErrorKind::ArgumentNotFound => {}
                     Err(err) => err.exit(),
                 }
 
                 #[cfg(unix)]
                 match matches.value_of_t::<PathBuf>("TUN_DEVICE_FD_FROM_PATH") {
                     Ok(fd_path) => local_config.tun_device_fd_from_path = Some(fd_path),
-                    Err(ref err) if err.kind == ClapErrorKind::ArgumentNotFound => {}
+                    Err(ref err) if err.kind() == ClapErrorKind::ArgumentNotFound => {}
                     Err(err) => err.exit(),
                 }
             }
@@ -643,27 +643,27 @@ pub fn main(matches: &ArgMatches) {
 
         match matches.value_of_t::<u64>("TCP_KEEP_ALIVE") {
             Ok(keep_alive) => config.keep_alive = Some(Duration::from_secs(keep_alive)),
-            Err(ref err) if err.kind == ClapErrorKind::ArgumentNotFound => {}
+            Err(ref err) if err.kind() == ClapErrorKind::ArgumentNotFound => {}
             Err(err) => err.exit(),
         }
 
         #[cfg(any(target_os = "linux", target_os = "android"))]
         match matches.value_of_t::<u32>("OUTBOUND_FWMARK") {
             Ok(mark) => config.outbound_fwmark = Some(mark),
-            Err(ref err) if err.kind == ClapErrorKind::ArgumentNotFound => {}
+            Err(ref err) if err.kind() == ClapErrorKind::ArgumentNotFound => {}
             Err(err) => err.exit(),
         }
 
         #[cfg(target_os = "freebsd")]
         match matches.value_of_t::<u32>("OUTBOUND_USER_COOKIE") {
             Ok(user_cookie) => config.outbound_user_cookie = Some(user_cookie),
-            Err(ref err) if err.kind == ClapErrorKind::ArgumentNotFound => {}
+            Err(ref err) if err.kind() == ClapErrorKind::ArgumentNotFound => {}
             Err(err) => err.exit(),
         }
 
         match matches.value_of_t::<String>("OUTBOUND_BIND_INTERFACE") {
             Ok(iface) => config.outbound_bind_interface = Some(iface),
-            Err(ref err) if err.kind == ClapErrorKind::ArgumentNotFound => {}
+            Err(ref err) if err.kind() == ClapErrorKind::ArgumentNotFound => {}
             Err(err) => err.exit(),
         }
 
@@ -684,7 +684,7 @@ pub fn main(matches: &ArgMatches) {
                     process::exit(crate::EXIT_CODE_LOAD_ACL_FAILURE);
                 }
             };
-            config.acl = Arc::new(Mutex::new(Some(acl)));
+            config.acl = Some(acl);
         }
 
         if let Some(dns) = matches.value_of("DNS") {
@@ -697,40 +697,40 @@ pub fn main(matches: &ArgMatches) {
 
         match matches.value_of_t::<u64>("UDP_TIMEOUT") {
             Ok(udp_timeout) => config.udp_timeout = Some(Duration::from_secs(udp_timeout)),
-            Err(ref err) if err.kind == ClapErrorKind::ArgumentNotFound => {}
+            Err(ref err) if err.kind() == ClapErrorKind::ArgumentNotFound => {}
             Err(err) => err.exit(),
         }
 
         match matches.value_of_t::<usize>("UDP_MAX_ASSOCIATIONS") {
             Ok(udp_max_assoc) => config.udp_max_associations = Some(udp_max_assoc),
-            Err(ref err) if err.kind == ClapErrorKind::ArgumentNotFound => {}
+            Err(ref err) if err.kind() == ClapErrorKind::ArgumentNotFound => {}
             Err(err) => err.exit(),
         }
 
         match matches.value_of_t::<u32>("INBOUND_SEND_BUFFER_SIZE") {
             Ok(bs) => config.inbound_send_buffer_size = Some(bs),
-            Err(ref err) if err.kind == ClapErrorKind::ArgumentNotFound => {}
+            Err(ref err) if err.kind() == ClapErrorKind::ArgumentNotFound => {}
             Err(err) => err.exit(),
         }
         match matches.value_of_t::<u32>("INBOUND_RECV_BUFFER_SIZE") {
             Ok(bs) => config.inbound_recv_buffer_size = Some(bs),
-            Err(ref err) if err.kind == ClapErrorKind::ArgumentNotFound => {}
+            Err(ref err) if err.kind() == ClapErrorKind::ArgumentNotFound => {}
             Err(err) => err.exit(),
         }
         match matches.value_of_t::<u32>("OUTBOUND_SEND_BUFFER_SIZE") {
             Ok(bs) => config.outbound_send_buffer_size = Some(bs),
-            Err(ref err) if err.kind == ClapErrorKind::ArgumentNotFound => {}
+            Err(ref err) if err.kind() == ClapErrorKind::ArgumentNotFound => {}
             Err(err) => err.exit(),
         }
         match matches.value_of_t::<u32>("OUTBOUND_RECV_BUFFER_SIZE") {
             Ok(bs) => config.outbound_recv_buffer_size = Some(bs),
-            Err(ref err) if err.kind == ClapErrorKind::ArgumentNotFound => {}
+            Err(ref err) if err.kind() == ClapErrorKind::ArgumentNotFound => {}
             Err(err) => err.exit(),
         }
 
         match matches.value_of_t::<IpAddr>("OUTBOUND_BIND_ADDR") {
             Ok(bind_addr) => config.outbound_bind_addr = Some(bind_addr),
-            Err(ref err) if err.kind == ClapErrorKind::ArgumentNotFound => {}
+            Err(ref err) if err.kind() == ClapErrorKind::ArgumentNotFound => {}
             Err(err) => err.exit(),
         }
 
@@ -740,16 +740,6 @@ pub fn main(matches: &ArgMatches) {
             eprintln!(
                 "missing `local_address`, consider specifying it by --local-addr command line option, \
                     or \"local_address\" and \"local_port\" in configuration file"
-            );
-            return;
-        }
-
-        if config.server.is_empty() {
-            eprintln!(
-                "missing proxy servers, consider specifying it by \
-                    --server-addr, --encrypt-method, --password command line option, \
-                        or --server-url command line option, \
-                        or configuration file, check more details in https://shadowsocks.org/en/config/quick-guide.html"
             );
             return;
         }
@@ -936,7 +926,7 @@ pub fn start<F: Fn(std::sync::mpsc::Sender<bool>)>(path: &str, restart: bool, ac
                     process::exit(crate::EXIT_CODE_LOAD_ACL_FAILURE);
                 }
             };
-            config.acl = Arc::new(Mutex::new(Some(acl)));
+            config.acl = Some(acl);
         }
 
         let runtime = builder.enable_all().build().expect("create tokio Runtime");

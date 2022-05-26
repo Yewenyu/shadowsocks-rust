@@ -38,7 +38,6 @@ where
             svr_cfg.addr(),
         );
     } else {
-        debug!("established tcp tunnel {} <-> {} bypassed", peer_addr, target_addr);
         return establish_tcp_tunnel_bypassed(plain, shadow, peer_addr, target_addr).await;
     }
 
@@ -74,15 +73,20 @@ where
 
     match copy_encrypted_bidirectional(svr_cfg.method(), shadow, plain).await {
         Ok((wn, rn)) => {
-            debug!(
+            trace!(
                 "tcp tunnel {} <-> {} (proxied) closed, L2R {} bytes, R2L {} bytes",
-                peer_addr, target_addr, rn, wn
+                peer_addr,
+                target_addr,
+                rn,
+                wn
             );
         }
         Err(err) => {
-            debug!(
+            trace!(
                 "tcp tunnel {} <-> {} (proxied) closed with error: {}",
-                peer_addr, target_addr, err
+                peer_addr,
+                target_addr,
+                err
             );
         }
     }
@@ -90,7 +94,7 @@ where
     Ok(())
 }
 
-async fn establish_tcp_tunnel_bypassed<P, S>(
+pub(crate) async fn establish_tcp_tunnel_bypassed<P, S>(
     plain: &mut P,
     shadow: &mut S,
     peer_addr: SocketAddr,
@@ -100,6 +104,8 @@ where
     P: AsyncRead + AsyncWrite + Unpin,
     S: AsyncRead + AsyncWrite + Unpin,
 {
+    debug!("established tcp tunnel {} <-> {} bypassed", peer_addr, target_addr);
+
     match copy_bidirectional(plain, shadow).await {
         Ok((rn, wn)) => {
             trace!(

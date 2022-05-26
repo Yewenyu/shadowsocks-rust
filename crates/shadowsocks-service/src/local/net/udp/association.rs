@@ -4,7 +4,7 @@ use std::{
     cell::RefCell,
     io::{self, ErrorKind},
     marker::PhantomData,
-    net::SocketAddr,
+    net::{SocketAddr, SocketAddrV6},
     sync::Arc,
     time::Duration,
 };
@@ -19,7 +19,7 @@ use tokio::{sync::mpsc, task::JoinHandle, time};
 
 use shadowsocks::{
     lookup_then,
-    net::UdpSocket as ShadowUdpSocket,
+    net::{AddrFamily, UdpSocket as ShadowUdpSocket},
     relay::{
         udprelay::{options::UdpSocketControlData, ProxySocket, MAXIMUM_UDP_PAYLOAD_SIZE},
         Address,
@@ -272,7 +272,7 @@ where
             // client_session_id must be random generated,
             // server use this ID to identify every independent clients.
             client_session_id: generate_client_session_id(),
-            client_packet_id: 1,
+            client_packet_id: 0,
             server_session: None,
             server_session_expire_duration,
         };
@@ -421,7 +421,7 @@ where
 
     async fn dispatch_received_packet(&mut self, target_addr: &Address, data: &[u8]) {
         // Check if target should be bypassed. If so, send packets directly.
-        let bypassed = self.context.check_target_bypassed(target_addr).await;
+        let bypassed = self.balancer.is_empty() || self.context.check_target_bypassed(target_addr).await;
 
         trace!(
             "udp relay {} -> {} ({}) with {} bytes",
@@ -466,25 +466,59 @@ where
         }
     }
 
-    async fn send_received_bypassed_packet(&mut self, target_addr: SocketAddr, data: &[u8]) -> io::Result<()> {
-        let socket = match target_addr {
-            SocketAddr::V4(..) => match self.bypassed_ipv4_socket {
+    async fn send_received_bypassed_packet(&mut self, mut target_addr: SocketAddr, data: &[u8]) -> io::Result<()> {
+        const UDP_SOCKET_SUPPORT_DUAL_STACK: bool = cfg!(any(
+            target_os = "linux",
+            target_os = "android",
+            target_os = "macos",
+            target_os = "ios",
+            target_os = "watchos",
+            target_os = "tvos",
+            target_os = "freebsd",
+            // target_os = "dragonfly",
+            // target_os = "netbsd",
+            target_os = "windows",
+        ));
+
+        let socket = if UDP_SOCKET_SUPPORT_DUAL_STACK {
+            match self.bypassed_ipv6_socket {
                 Some(ref mut socket) => socket,
                 None => {
                     let socket =
-                        ShadowUdpSocket::connect_any_with_opts(&target_addr, self.context.connect_opts_ref()).await?;
-                    self.bypassed_ipv4_socket.insert(socket)
-                }
-            },
-            SocketAddr::V6(..) => match self.bypassed_ipv6_socket {
-                Some(ref mut socket) => socket,
-                None => {
-                    let socket =
-                        ShadowUdpSocket::connect_any_with_opts(&target_addr, self.context.connect_opts_ref()).await?;
+                        ShadowUdpSocket::connect_any_with_opts(AddrFamily::Ipv6, self.context.connect_opts_ref())
+                            .await?;
                     self.bypassed_ipv6_socket.insert(socket)
                 }
-            },
+            }
+        } else {
+            match target_addr {
+                SocketAddr::V4(..) => match self.bypassed_ipv4_socket {
+                    Some(ref mut socket) => socket,
+                    None => {
+                        let socket =
+                            ShadowUdpSocket::connect_any_with_opts(&target_addr, self.context.connect_opts_ref())
+                                .await?;
+                        self.bypassed_ipv4_socket.insert(socket)
+                    }
+                },
+                SocketAddr::V6(..) => match self.bypassed_ipv6_socket {
+                    Some(ref mut socket) => socket,
+                    None => {
+                        let socket =
+                            ShadowUdpSocket::connect_any_with_opts(&target_addr, self.context.connect_opts_ref())
+                                .await?;
+                        self.bypassed_ipv6_socket.insert(socket)
+                    }
+                },
+            }
         };
+
+        if UDP_SOCKET_SUPPORT_DUAL_STACK {
+            if let SocketAddr::V4(saddr) = target_addr {
+                let mapped_ip = saddr.ip().to_ipv6_mapped();
+                target_addr = SocketAddr::V6(SocketAddrV6::new(mapped_ip, saddr.port(), 0, 0));
+            }
+        }
 
         let n = socket.send_to(data, target_addr).await?;
         if n != data.len() {
@@ -501,6 +535,32 @@ where
     }
 
     async fn dispatch_received_proxied_packet(&mut self, target_addr: &Address, data: &[u8]) -> io::Result<()> {
+        // Increase Packet ID before send
+        self.client_packet_id = match self.client_packet_id.checked_add(1) {
+            Some(i) => i,
+            None => {
+                // FIXME: client_packet_id overflowed. What's the proper way to handle this?
+                //
+                // Reopen a new session is not perfect, because the remote target will receive packets from a different address.
+                // For most application protocol, like QUIC, it is fine to change client address.
+                //
+                // But it will happen only when a client continously send 18446744073709551616 packets without renewing the socket.
+
+                let new_session_id = generate_client_session_id();
+
+                warn!(
+                    "{} -> {} (proxied) packet id overflowed. socket reset and session renewed ({} -> {})",
+                    self.peer_addr, target_addr, self.client_session_id, new_session_id
+                );
+
+                self.proxied_socket.take();
+                self.client_packet_id = 1;
+                self.client_session_id = new_session_id;
+
+                self.client_packet_id
+            }
+        };
+
         let socket = match self.proxied_socket {
             Some(ref mut socket) => socket,
             None => {
@@ -515,20 +575,6 @@ where
                 let socket = MonProxySocket::from_socket(socket, self.context.flow_stat());
 
                 self.proxied_socket.insert(socket)
-            }
-        };
-
-        // Increase Packet ID before send
-        self.client_packet_id = match self.client_packet_id.checked_add(1) {
-            Some(i) => i,
-            None => {
-                warn!(
-                    "{} -> {} (proxied) sending {} bytes failed, packet id overflowed",
-                    self.peer_addr,
-                    target_addr,
-                    data.len(),
-                );
-                return Ok(());
             }
         };
 
@@ -558,19 +604,13 @@ where
     }
 
     async fn send_received_respond_packet(&mut self, addr: &Address, data: &[u8], bypassed: bool) {
-        debug!(
+        trace!(
             "udp relay {} <- {} ({}) received {} bytes",
             self.peer_addr,
             addr,
             if bypassed { "bypassed" } else { "proxied" },
             data.len(),
         );
-        {
-            if let Some(acl) = &mut *self.context.acl.lock().await {
-                debug!("udp dns check");
-                acl.check_dns_msg(data);
-            }
-        }
 
         // Keep association alive in map
         self.keepalive_flag = true;

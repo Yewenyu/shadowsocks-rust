@@ -106,7 +106,6 @@ impl Server {
 /// Starts a shadowsocks local server
 pub async fn create(config: Config) -> io::Result<Server> {
     assert!(config.config_type == ConfigType::Local && !config.local.is_empty());
-    assert!(!config.server.is_empty());
 
     trace!("{:?}", config);
 
@@ -167,7 +166,9 @@ pub async fn create(config: Config) -> io::Result<Server> {
         context.set_ipv6_first(config.ipv6_first);
     }
 
-    context.set_acl(config.acl);
+    if let Some(acl) = config.acl {
+        context.set_acl(acl);
+    }
 
     context.set_security_config(&config.security);
 

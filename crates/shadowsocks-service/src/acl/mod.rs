@@ -11,17 +11,15 @@ use std::{
     net::{IpAddr, SocketAddr},
     path::{Path, PathBuf},
     str,
-    sync::{Arc, Mutex},
 };
 
 use ipnet::{IpNet, Ipv4Net, Ipv6Net};
 use iprange::IpRange;
-use log::{debug, trace, warn};
+use log::{trace, warn};
 use once_cell::sync::Lazy;
 use regex::bytes::{Regex, RegexBuilder, RegexSet, RegexSetBuilder};
 
 use shadowsocks::{context::Context, relay::socks5::Address};
-use trust_dns_resolver::proto::{op::Message, rr::RData, serialize::binary::BinDecodable};
 
 use self::sub_domains_tree::SubDomainsTree;
 
@@ -138,30 +136,6 @@ impl Rules {
     /// Check if there are no rules for domain names
     fn is_host_empty(&self) -> bool {
         self.rule_set.is_empty() && self.rule_tree.is_empty() && self.rule_regex.is_empty()
-    }
-}
-impl Rules {
-    fn add_ipv4_rule(&mut self, rule: impl Into<Ipv4Net>) {
-        let rule = rule.into();
-        trace!("IPV4-RULE {}", rule);
-        self.ipv4.add(rule);
-        self.ipv4.simplify();
-    }
-
-    fn add_ipv6_rule(&mut self, rule: impl Into<Ipv6Net>) {
-        let rule = rule.into();
-        trace!("IPV6-RULE {}", rule);
-        self.ipv6.add(rule);
-        self.ipv6.simplify();
-    }
-
-    fn add_str_rule(&mut self, rule: &str) {
-        let rule = rule.parse::<IpAddr>();
-        match rule {
-            Ok(IpAddr::V4(v4)) => self.add_ipv4_rule(v4),
-            Ok(IpAddr::V6(v6)) => self.add_ipv6_rule(v6),
-            Err(_) => {}
-        }
     }
 }
 
@@ -536,14 +510,8 @@ impl AccessControl {
     ///
     /// This function may perform a DNS resolution
     pub async fn check_target_bypassed(&self, context: &Context, addr: &Address) -> bool {
-        // if AccessControl::check_bypassed(context, addr).await {
-        //     return true;
-        // }
         match *addr {
-            Address::SocketAddress(ref addr) => {
-                let value = !self.check_ip_in_proxy_list(&addr.ip());
-                return value;
-            }
+            Address::SocketAddress(ref addr) => !self.check_ip_in_proxy_list(&addr.ip()),
             // Resolve hostname and check the list
             Address::DomainNameAddress(ref host, port) => {
                 if let Some(value) = self.check_host_in_proxy_list(host) {
@@ -598,80 +566,6 @@ impl AccessControl {
                     }
                 }
 
-                false
-            }
-        }
-    }
-}
-
-impl AccessControl {
-    pub fn check_dns_msg(&mut self, data: &[u8]) -> bool {
-        let msg = Message::from_bytes(data);
-        match msg {
-            Ok(msg) => {
-                let host = msg.queries().get(0).unwrap().name().to_ascii();
-                for r in msg.answers() {
-                    if let Some(RData::A(ip)) = r.data() {
-                        let str = ip.to_string();
-                        self.checkHostAndAddIp(&host, str.as_str());
-                    } else if let Some(RData::HTTPS(http)) = r.data() {
-                        for (_, value) in http.svc_params() {
-                            match value {
-                                trust_dns_resolver::proto::rr::rdata::svcb::SvcParamValue::Ipv4Hint(value) => {
-                                    let vec = value.0.clone();
-                                    for v in vec {
-                                        let ip = v.to_string();
-                                        self.checkHostAndAddIp(&host, ip.as_str());
-                                    }
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-                }
-                return true;
-            }
-            Err(err) => {
-                debug!("Not a DNS packet:{}", err);
-                return false;
-            }
-        }
-    }
-
-    pub fn checkHostAndAddIp(&mut self, host: &str, ip: &str) {
-        // return;
-        let mut des = "None";
-        if host.contains("ipip.net") {
-            print!("");
-        }
-        if self.white_list.check_host_matched(host) {
-            self.white_list.add_str_rule(ip);
-            des = "proxyed";
-        } else if self.black_list.check_host_matched(host) {
-            self.black_list.add_str_rule(ip);
-            des = "bypassed"
-        }
-        debug!("checkHostAndAddIp,host:{},ip:{},{}", host, ip, des);
-    }
-
-    pub async fn check_target_bypassed1(&self, context: &Context, addr: &Address) -> bool {
-        match *addr {
-            Address::SocketAddress(ref addr) => !self.check_ip_in_proxy_list(&addr.ip()),
-            // Resolve hostname and check the list
-            Address::DomainNameAddress(ref host, port) => {
-                if let Some(value) = self.check_host_in_proxy_list(host) {
-                    return !value;
-                }
-                if self.is_ip_empty() {
-                    return !self.is_default_in_proxy_list();
-                }
-                if let Ok(vaddr) = context.dns_resolve(host, port).await {
-                    for addr in vaddr {
-                        if !self.check_ip_in_proxy_list(&addr.ip()) {
-                            return true;
-                        }
-                    }
-                }
                 false
             }
         }

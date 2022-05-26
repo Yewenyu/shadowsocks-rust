@@ -20,17 +20,10 @@ use tokio_tfo::TfoStream;
 
 use crate::net::{
     sys::{set_common_sockopt_after_connect, set_common_sockopt_for_connect, socket_bind_dual_stack},
+    udp::{BatchRecvMessage, BatchSendMessage},
     AddrFamily,
     ConnectOpts,
 };
-
-#[cfg(any(
-    target_os = "linux",
-    target_os = "android",
-    target_os = "macos",
-    target_os = "freebsd"
-))]
-use crate::net::udp::{BatchRecvMessage, BatchSendMessage};
 
 /// A `TcpStream` that supports TFO (TCP Fast Open)
 #[pin_project(project = TcpStreamProj)]
@@ -303,12 +296,6 @@ extern "C" {
 
 static SUPPORT_BATCH_SEND_RECV_MSG: AtomicBool = AtomicBool::new(true);
 
-#[cfg(any(
-    target_os = "linux",
-    target_os = "android",
-    target_os = "macos",
-    target_os = "freebsd"
-))]
 fn recvmsg_fallback<S: AsRawFd>(sock: &S, msg: &mut BatchRecvMessage<'_>) -> io::Result<()> {
     let mut hdr: libc::msghdr = unsafe { mem::zeroed() };
 
@@ -332,12 +319,6 @@ fn recvmsg_fallback<S: AsRawFd>(sock: &S, msg: &mut BatchRecvMessage<'_>) -> io:
     Ok(())
 }
 
-#[cfg(any(
-    target_os = "linux",
-    target_os = "android",
-    target_os = "macos",
-    target_os = "freebsd"
-))]
 pub fn batch_recvmsg<S: AsRawFd>(sock: &S, msgs: &mut [BatchRecvMessage<'_>]) -> io::Result<usize> {
     if msgs.is_empty() {
         return Ok(0);
@@ -392,12 +373,6 @@ pub fn batch_recvmsg<S: AsRawFd>(sock: &S, msgs: &mut [BatchRecvMessage<'_>]) ->
     Ok(ret as usize)
 }
 
-#[cfg(any(
-    target_os = "linux",
-    target_os = "android",
-    target_os = "macos",
-    target_os = "freebsd"
-))]
 fn sendmsg_fallback<S: AsRawFd>(sock: &S, msg: &mut BatchSendMessage<'_>) -> io::Result<()> {
     let mut hdr: libc::msghdr = unsafe { mem::zeroed() };
 
@@ -419,12 +394,6 @@ fn sendmsg_fallback<S: AsRawFd>(sock: &S, msg: &mut BatchSendMessage<'_>) -> io:
     Ok(())
 }
 
-#[cfg(any(
-    target_os = "linux",
-    target_os = "android",
-    target_os = "macos",
-    target_os = "freebsd"
-))]
 pub fn batch_sendmsg<S: AsRawFd>(sock: &S, msgs: &mut [BatchSendMessage<'_>]) -> io::Result<usize> {
     if msgs.is_empty() {
         return Ok(0);

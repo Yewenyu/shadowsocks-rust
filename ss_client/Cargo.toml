@@ -1,0 +1,25 @@
+[package]
+name = "ss_client"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+
+
+[dependencies]
+shadowsocks-rust = { path = "..",default-features = false,features = [
+    "logging",
+    "local-dns",
+    "local-http",
+    "server",
+    "manager",
+    "utility",
+    "service",
+    "multi-threaded",
+    "stream-cipher",
+    ]}
+lazy_static = "*"
+serde = { version = "1.0.134", features = ["derive"] }
+json5 = "0.4"
+serde_yaml = "0.8"

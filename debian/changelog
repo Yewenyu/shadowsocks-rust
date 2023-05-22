@@ -1,3 +1,58 @@
+shadowsocks-rust (1.15.3) unstable; urgency=medium
+
+  ## Features
+
+  - local-tun: Support `tun_interface_destination` for configuring Tun device's destination address
+  - Support `outbound_fwmark`, `outbound_user_cookie`, `outbound_bind_interface` and `outbound_bind_addr` in configuration file
+
+  ## Bug Fixed
+
+  - local-tun: #1138 Fixed TCP state management
+  - local-redir: #988 UDP compatible with Linux < 2.6.37 (without `IPV6_TRANSPARENT`)
+  - manager: #1101 Set missing `ipv6_first` for servers
+
+  ## Miscellaneous
+
+  - Snap: #1088 Disable Snap daemon by default
+
+shadowsocks-rust (1.15.2) unstable; urgency=medium
+
+  ## Bug Fixes
+
+  - #1060 ACL supports checking IPv4-mapped-IPv6 addresses with IPv4 rules
+
+  ## Miscellaneous
+
+  - Code style and potential bug fixes with clippy check
+
+shadowsocks-rust (1.15.0) unstable; urgency=medium
+
+  ## Features
+
+  - #811 AEAD-2022 protocol ([SIP022](https://github.com/shadowsocks/shadowsocks-org/issues/196))
+      - WARN: This is still a draft protocol, use it at your own risk.
+  - SIP002 Extended Format: Allowing unencoded user-info in URL, https://github.com/shadowsocks/shadowsocks-org/issues/27#issuecomment-1124853747
+  - #810 Manager standalone mode support bypassing ACL files
+  - #818 Allow `sslocal` run without any `servers`, which will bypass all connections and packets
+  - #838 `"password"` is optional for `none` / `plain` method
+  - redir-local: Enable dual-stack support on Linux (TProxy) and FreeBSD
+  - Disable `md5-asm` and `sha1-asm`: https://github.com/shadowsocks/shadowsocks-crypto/issues/16
+  - `"acl"` and `"outbound_fwmark"` are available in configuration file
+
+  ## Miscellaneous
+
+  - shadowsocks/shadowsocks-org#204 Remove `security-iv-printable-prefix` experimental feature
+  - Upgrade [clap](https://crates.io/crates/clap) to v4.0.
+  - UDP association channel size shrinked to 1024, which could save a lot of memory for each associations
+
+  ## Enhancements
+
+  - #855 Properly handle IPv4-mapped-IPv6 addresses in UDP assocations
+      - `ssserver` always convert IPv4-mapped-IPv6 addresses to IPv4 in UDP respond target addresses
+      - `sslocal`
+          - `tun`, `socks5` always convert IPv4-mapped-IPv6 addresses to IPv4
+          - `redir` always use IPv6 sockets for sending back packets
+
 shadowsocks-rust (1.14.3) unstable; urgency=medium
 
   ## Features
@@ -80,7 +135,7 @@ shadowsocks-rust (1.13.0) unstable; urgency=medium
 
   ## Features
 
-  - #706 `balancer.check_best_interval` could let ping balancer to ping only the choosen best server in this interval
+  - #706 `balancer.check_best_interval` could let ping balancer to ping only the chosen best server in this interval
     - Recommended: Set a shorter interval in `balancer.check_best_interval` than `balancer.check_interval` to check much frequently the best server.
     - `balancer.check_interval` controls the interval of checking all the available servers
     - When server start, the "check best" strategy starts after it receives enough data for estimating all servers' scores

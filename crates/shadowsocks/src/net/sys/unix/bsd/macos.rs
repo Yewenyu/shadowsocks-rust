@@ -1,8 +1,8 @@
 use std::{
     io::{self, ErrorKind},
     mem,
-    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
-    os::unix::io::{AsRawFd, RawFd},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, TcpStream as StdTcpStream},
+    os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd},
     pin::Pin,
     ptr,
     sync::atomic::{AtomicBool, Ordering},
@@ -13,20 +13,15 @@ use log::{debug, error, warn};
 use pin_project::pin_project;
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use tokio::{
-    io::{AsyncRead, AsyncWrite, ReadBuf},
+    io::{AsyncRead, AsyncWrite, Interest, ReadBuf},
     net::{TcpSocket, TcpStream as TokioTcpStream, UdpSocket},
 };
 use tokio_tfo::TfoStream;
 
-#[cfg(any(
-    target_os = "linux",
-    target_os = "android",
-    target_os = "macos",
-    target_os = "freebsd"
-))]
-use crate::net::udp::{BatchRecvMessage, BatchSendMessage};
 use crate::net::{
     sys::{set_common_sockopt_after_connect, set_common_sockopt_for_connect, socket_bind_dual_stack},
+    udp::{BatchRecvMessage, BatchSendMessage},
+    AcceptOpts,
     AddrFamily,
     ConnectOpts,
 };
@@ -40,21 +35,87 @@ pub enum TcpStream {
 
 impl TcpStream {
     pub async fn connect(addr: SocketAddr, opts: &ConnectOpts) -> io::Result<TcpStream> {
+        if opts.tcp.mptcp {
+            return TcpStream::connect_mptcp(addr, opts).await;
+        }
+
         let socket = match addr {
             SocketAddr::V4(..) => TcpSocket::new_v4()?,
             SocketAddr::V6(..) => TcpSocket::new_v6()?,
         };
 
+        TcpStream::connect_with_socket(socket, addr, opts).await
+    }
+
+    async fn connect_mptcp(addr: SocketAddr, opts: &ConnectOpts) -> io::Result<TcpStream> {
+        // https://opensource.apple.com/source/xnu/xnu-4570.41.2/bsd/sys/socket.h.auto.html
+        const AF_MULTIPATH: libc::c_int = 39;
+
+        let socket = unsafe {
+            let fd = libc::socket(AF_MULTIPATH, libc::SOCK_STREAM, libc::IPPROTO_TCP);
+            let socket = Socket::from_raw_fd(fd);
+            socket.set_nonblocking(true)?;
+            TcpSocket::from_raw_fd(socket.into_raw_fd())
+        };
+
+        TcpStream::connect_with_socket(socket, addr, opts).await
+    }
+
+    #[inline]
+    async fn connect_with_socket(socket: TcpSocket, addr: SocketAddr, opts: &ConnectOpts) -> io::Result<TcpStream> {
         // Binds to a specific network interface (device)
         if let Some(ref iface) = opts.bind_interface {
-            set_ip_bound_if(&socket, addr, iface)?;
+            set_ip_bound_if(&socket, &addr, iface)?;
         }
 
         set_common_sockopt_for_connect(addr, &socket, opts)?;
 
         if !opts.tcp.fastopen {
             // If TFO is not enabled, it just works like a normal TcpStream
-            let stream = socket.connect(addr).await?;
+            //
+            // But for Multipath-TCP, we must use connectx
+            // http://blog.multipath-tcp.org/blog/html/2018/12/17/multipath_tcp_apis.html
+            let stream = if opts.tcp.mptcp {
+                let stream = unsafe {
+                    let raddr = SockAddr::from(addr);
+
+                    let mut endpoints: libc::sa_endpoints_t = mem::zeroed();
+                    endpoints.sae_dstaddr = raddr.as_ptr();
+                    endpoints.sae_dstaddrlen = raddr.len();
+
+                    let ret = libc::connectx(
+                        socket.as_raw_fd(),
+                        &endpoints as *const _,
+                        libc::SAE_ASSOCID_ANY,
+                        0,
+                        ptr::null(),
+                        0,
+                        ptr::null_mut(),
+                        ptr::null_mut(),
+                    );
+
+                    if ret != 0 {
+                        let err = io::Error::last_os_error();
+                        if err.raw_os_error() != Some(libc::EINPROGRESS) {
+                            return Err(err);
+                        }
+                    }
+
+                    let fd = socket.into_raw_fd();
+                    TokioTcpStream::from_std(StdTcpStream::from_raw_fd(fd))?
+                };
+
+                stream.ready(Interest::WRITABLE).await?;
+
+                if let Err(err) = stream.take_error() {
+                    return Err(err);
+                }
+
+                stream
+            } else {
+                socket.connect(addr).await?
+            };
+
             set_common_sockopt_after_connect(&stream, opts)?;
             return Ok(TcpStream::Standard(stream));
         }
@@ -161,7 +222,15 @@ pub fn set_tcp_fastopen<S: AsRawFd>(socket: &S) -> io::Result<()> {
     Ok(())
 }
 
-fn set_ip_bound_if<S: AsRawFd>(socket: &S, addr: SocketAddr, iface: &str) -> io::Result<()> {
+/// Create a TCP socket for listening
+pub async fn create_inbound_tcp_socket(bind_addr: &SocketAddr, _accept_opts: &AcceptOpts) -> io::Result<TcpSocket> {
+    match bind_addr {
+        SocketAddr::V4(..) => TcpSocket::new_v4(),
+        SocketAddr::V6(..) => TcpSocket::new_v6(),
+    }
+}
+
+fn set_ip_bound_if<S: AsRawFd>(socket: &S, addr: &SocketAddr, iface: &str) -> io::Result<()> {
     const IP_BOUND_IF: libc::c_int = 25; // bsd/netinet/in.h
     const IPV6_BOUND_IF: libc::c_int = 125; // bsd/netinet6/in6.h
 
@@ -250,7 +319,8 @@ pub fn set_disable_ip_fragmentation<S: AsRawFd>(af: AddrFamily, socket: &S) -> i
     Ok(())
 }
 
-/// Create a `UdpSocket` for connecting to `addr`
+/// Create a `UdpSocket` with specific address family
+#[inline]
 pub async fn create_outbound_udp_socket(af: AddrFamily, config: &ConnectOpts) -> io::Result<UdpSocket> {
     let bind_addr = match (af, config.bind_local_addr) {
         (AddrFamily::Ipv4, Some(IpAddr::V4(ip))) => SocketAddr::new(ip.into(), 0),
@@ -259,10 +329,17 @@ pub async fn create_outbound_udp_socket(af: AddrFamily, config: &ConnectOpts) ->
         (AddrFamily::Ipv6, ..) => SocketAddr::new(Ipv6Addr::UNSPECIFIED.into(), 0),
     };
 
+    bind_outbound_udp_socket(&bind_addr, config).await
+}
+
+/// Create a `UdpSocket` binded to `bind_addr`
+pub async fn bind_outbound_udp_socket(bind_addr: &SocketAddr, config: &ConnectOpts) -> io::Result<UdpSocket> {
+    let af = AddrFamily::from(bind_addr);
+
     let socket = if af != AddrFamily::Ipv6 {
         UdpSocket::bind(bind_addr).await?
     } else {
-        let socket = Socket::new(Domain::for_address(bind_addr), Type::DGRAM, Some(Protocol::UDP))?;
+        let socket = Socket::new(Domain::for_address(*bind_addr), Type::DGRAM, Some(Protocol::UDP))?;
         socket_bind_dual_stack(&socket, &bind_addr, false)?;
 
         // UdpSocket::from_std requires socket to be non-blocked
@@ -302,12 +379,6 @@ extern "C" {
 
 static SUPPORT_BATCH_SEND_RECV_MSG: AtomicBool = AtomicBool::new(true);
 
-#[cfg(any(
-    target_os = "linux",
-    target_os = "android",
-    target_os = "macos",
-    target_os = "freebsd"
-))]
 fn recvmsg_fallback<S: AsRawFd>(sock: &S, msg: &mut BatchRecvMessage<'_>) -> io::Result<()> {
     let mut hdr: libc::msghdr = unsafe { mem::zeroed() };
 
@@ -331,12 +402,6 @@ fn recvmsg_fallback<S: AsRawFd>(sock: &S, msg: &mut BatchRecvMessage<'_>) -> io:
     Ok(())
 }
 
-#[cfg(any(
-    target_os = "linux",
-    target_os = "android",
-    target_os = "macos",
-    target_os = "freebsd"
-))]
 pub fn batch_recvmsg<S: AsRawFd>(sock: &S, msgs: &mut [BatchRecvMessage<'_>]) -> io::Result<usize> {
     if msgs.is_empty() {
         return Ok(0);
@@ -385,18 +450,12 @@ pub fn batch_recvmsg<S: AsRawFd>(sock: &S, msgs: &mut [BatchRecvMessage<'_>]) ->
         let hdr = &vec_msg_hdr[idx];
         let name = &vec_msg_name[idx];
         msg.addr = name.as_socket().expect("SockAddr.as_socket");
-        msg.data_len = hdr.msg_datalen as usize;
+        msg.data_len = hdr.msg_datalen;
     }
 
     Ok(ret as usize)
 }
 
-#[cfg(any(
-    target_os = "linux",
-    target_os = "android",
-    target_os = "macos",
-    target_os = "freebsd"
-))]
 fn sendmsg_fallback<S: AsRawFd>(sock: &S, msg: &mut BatchSendMessage<'_>) -> io::Result<()> {
     let mut hdr: libc::msghdr = unsafe { mem::zeroed() };
 
@@ -418,12 +477,6 @@ fn sendmsg_fallback<S: AsRawFd>(sock: &S, msg: &mut BatchSendMessage<'_>) -> io:
     Ok(())
 }
 
-#[cfg(any(
-    target_os = "linux",
-    target_os = "android",
-    target_os = "macos",
-    target_os = "freebsd"
-))]
 pub fn batch_sendmsg<S: AsRawFd>(sock: &S, msgs: &mut [BatchSendMessage<'_>]) -> io::Result<usize> {
     if msgs.is_empty() {
         return Ok(0);
@@ -469,7 +522,7 @@ pub fn batch_sendmsg<S: AsRawFd>(sock: &S, msgs: &mut [BatchSendMessage<'_>]) ->
     for idx in 0..ret as usize {
         let msg = &mut msgs[idx];
         let hdr = &vec_msg_hdr[idx];
-        msg.data_len = hdr.msg_datalen as usize;
+        msg.data_len = hdr.msg_datalen;
     }
 
     Ok(ret as usize)

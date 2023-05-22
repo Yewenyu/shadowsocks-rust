@@ -81,6 +81,14 @@ cargo install shadowsocks-rust
 
 then you can find `sslocal` and `ssserver` in `$CARGO_HOME/bin`.
 
+### **Install using Homebrew**
+
+For macOS and Linux, you can install it using [Homebrew](https://brew.sh/):
+
+```bash
+brew install shadowsocks-rust
+```
+
 ### **Download release**
 
 Download static-linked build [here](https://github.com/shadowsocks/shadowsocks-rust/releases).
@@ -107,8 +115,8 @@ docker pull ghcr.io/shadowsocks/ssserver-rust:latest
 If you want to build the Docker image yourself, you need to use the [BuildX](https://docs.docker.com/buildx/working-with-buildx/).
 
 ```bash
-docker buildx build -t shadowsocks/ssserver-rust:latest -t shadowsocks/ssserver-rust:v1.11.1 --target ssserver .
-docker buildx build -t shadowsocks/sslocal-rust:latest -t shadowsocks/sslocal-rust:v1.11.1 --target sslocal .
+docker buildx build -t shadowsocks/ssserver-rust:latest -t shadowsocks/ssserver-rust:v1.15.2 --target ssserver .
+docker buildx build -t shadowsocks/sslocal-rust:latest -t shadowsocks/sslocal-rust:v1.15.2 --target sslocal .
 ```
 
 #### Run the container
@@ -233,13 +241,19 @@ Read `Cargo.toml` for more details.
 
 ## Getting Started
 
+Generate a safe and secured password for a specific encryption method (`aes-128-gcm` in the example) with:
+
+```bash
+ssservice genkey -m "aes-128-gcm"
+```
+
 Create a ShadowSocks' configuration file. Example
 
 ```jsonc
 {
     "server": "my_server_ip",
     "server_port": 8388,
-    "password": "mypassword",
+    "password": "rwQc8qPXVsRpGx3uW+Y3Lj4Y42yF9Bs0xg1pmx8/+bo=",
     "method": "aes-256-gcm",
     // ONLY FOR `sslocal`
     // Delete these lines if you are running `ssserver` or `ssmanager`
@@ -256,23 +270,23 @@ In shadowsocks-rust, we also have an extended configuration file format, which i
 {
     "servers": [
         {
-            "address": "127.0.0.1",
-            "port": 8388,
-            "password": "hello-world",
+            "server": "127.0.0.1",
+            "server_port": 8388,
+            "password": "rwQc8qPXVsRpGx3uW+Y3Lj4Y42yF9Bs0xg1pmx8/+bo=",
             "method": "aes-256-gcm",
             "timeout": 7200
         },
         {
-            "address": "127.0.0.1",
-            "port": 8389,
-            "password": "hello-kitty",
+            "server": "127.0.0.1",
+            "server_port": 8389,
+            "password": "/dliNXn5V4jg6vBW4MnC1I8Jljg9x7vSihmk6UZpRBM=",
             "method": "chacha20-ietf-poly1305"
         },
         {
             "disabled": true,
-            "address": "eg.disable.me",
-            "port": 8390,
-            "password": "hello-internet",
+            "server": "eg.disable.me",
+            "server_port": 8390,
+            "password": "mGvbWWay8ueP9IHnV5F1uWGN2BRToiVCAWJmWOTLU24=",
             "method": "chacha20-ietf-poly1305"
         }
     ],
@@ -472,7 +486,9 @@ Example configuration:
             "mode": "tcp_and_udp",
             // OPTIONAL. Authentication configuration file
             // Configuration file document could be found in the next section.
-            "socks5_auth_config_path": "/path/to/auth.json"
+            "socks5_auth_config_path": "/path/to/auth.json",
+            // OPTIONAL. Instance specific ACL
+            "acl": "/path/to/acl/file.acl",
         },
         {
             // SOCKS5, SOCKS4/4a local server
@@ -533,6 +549,19 @@ Example configuration:
             //
             // It has to be a host address in CIDR form
             "tun_interface_address": "10.255.0.1/24"
+        },
+        {
+            // Transparent Proxy (redir) local server (feature = "local-redir")
+            "protocol": "redir",
+            // OPTIONAL: TCP type, may be different between platforms
+            // Linux/Android: redirect (default), tproxy
+            // FreeBSD/OpenBSD: pf (default), ipfw
+            // NetBSD/macOS/Solaris: pf (default), ipfw
+            "tcp_redir": "tproxy",
+            // OPTIONAL: UDP type, may be different between platforms
+            // Linux/Android: tproxy (default)
+            // FreeBSD/OpenBSD: pf (default)
+            "udp_redir": "tproxy"
         }
     ],
 
@@ -545,6 +574,11 @@ Example configuration:
     "password": "your-password",
     "plugin": "v2ray-plugin",
     "plugin_opts": "mode=quic;host=github.com",
+    "plugin_args": [
+        // Each line is an argument passed to "plugin"
+        "--verbose"
+    ],
+    "plugin_mode": "tcp_and_udp", // SIP003u, default is "tcp_only"
     // Server: TCP socket timeout in seconds.
     // Client: TCP connection timeout in seconds.
     // Omit this field if you don't have specific needs.
@@ -565,6 +599,8 @@ Example configuration:
             "password": "your-password",
             "plugin": "...",
             "plugin_opts": "...",
+            "plugin_args": [],
+            "plugin_mode": "...",
             "timeout": 7200,
 
             // Customized weight for local server's balancer
@@ -573,6 +609,9 @@ Example configuration:
             // The higher weight, the server may rank higher.
             "tcp_weight": 1.0,
             "udp_weight": 1.0,
+
+            // OPTIONAL. Instance specific ACL
+            "acl": "/path/to/acl/file.acl",
         },
         {
             // Same key as basic format "server" and "server_port"
@@ -581,6 +620,29 @@ Example configuration:
             "method": "chacha20-ietf-poly1305",
             // Read the actual password from environment variable PASSWORD_FROM_ENV
             "password": "${PASSWORD_FROM_ENV}"
+        },
+        {
+            // AEAD-2022
+            "server": "::",
+            "server_port": 8390,
+            "method": "2022-blake3-aes-256-gcm",
+            "password": "3SYJ/f8nmVuzKvKglykRQDSgg10e/ADilkdRWrrY9HU=",
+            // For Server (OPTIONAL)
+            // Support multiple users with Extensible Identity Header
+            // https://github.com/Shadowsocks-NET/shadowsocks-specs/blob/main/2022-2-shadowsocks-2022-extensible-identity-headers.md
+            "users": [
+                {
+                    "name": "username",
+                    // User's password must have the same length as server's password
+                    "password": "4w0GKJ9U3Ox7CIXGU4A3LDQAqP6qrp/tUi/ilpOR9p4="
+                }
+            ],
+            // For Client (OPTIONAL)
+            // If EIH enabled, then "password" should have the following format: iPSK:iPSK:iPSK:uPSK
+            // - iPSK is one of the middle relay servers' PSK, for the last `ssserver`, it must be server's PSK ("password")
+            // - uPSK is the user's PSK ("password")
+            // Example:
+            // "password": "3SYJ/f8nmVuzKvKglykRQDSgg10e/ADilkdRWrrY9HU=:4w0GKJ9U3Ox7CIXGU4A3LDQAqP6qrp/tUi/ilpOR9p4="
         }
     ],
 
@@ -631,6 +693,16 @@ Example configuration:
     // Set IPV6_V6ONLY for all IPv6 listener sockets
     // Only valid for locals and servers listening on `::`
     "ipv6_only": false,
+
+    // Outbound socket options
+    // Linux Only (SO_MARK)
+    "outbound_fwmark": 255,
+    // FreeBSD only (SO_USER_COOKIE)
+    "outbound_user_cookie": 255,
+    // `SO_BINDTODEVICE` (Linux), `IP_BOUND_IF` (BSD), `IP_UNICAST_IF` (Windows) socket option for outbound sockets
+    "outbound_bind_interface": "eth1",
+    // Outbound socket bind() to this IP (choose a specific interface)
+    "outbound_bind_addr": "11.22.33.44",
 
     // Balancer customization
     "balancer": {
@@ -696,6 +768,8 @@ The configuration file is set by `socks5_auth_config_path` in `locals`.
 
 - `2022-blake3-aes-128-gcm`, `2022-blake3-aes-256-gcm`
 - `2022-blake3-chacha20-poly1305`, `2022-blake3-chacha8-poly1305`
+
+These Ciphers require `"password"` to be a Base64 string of key that have **exactly the same length** of Cipher's Key Size. It is recommended to use `ssservice keygen -m "METHOD_NAME"` to generate a secured and safe key.
 
 ### AEAD Ciphers
 
@@ -804,6 +878,7 @@ It supports the following features:
 - [x] Load balancing (multiple servers) and server delay checking
 - [x] [SIP004](https://github.com/shadowsocks/shadowsocks-org/issues/30) AEAD ciphers
 - [x] [SIP003](https://github.com/shadowsocks/shadowsocks-org/issues/28) Plugins
+- [x] [SIP003u](https://github.com/shadowsocks/shadowsocks-org/issues/180) Plugin with UDP support
 - [x] [SIP002](https://github.com/shadowsocks/shadowsocks-org/issues/27) Extension ss URLs
 - [x] [SIP022](https://github.com/shadowsocks/shadowsocks-org/issues/196) AEAD 2022 ciphers
 - [x] HTTP Proxy Supports ([RFC 7230](http://tools.ietf.org/html/rfc7230) and [CONNECT](https://tools.ietf.org/html/draft-luotonen-web-proxy-tunneling-01))

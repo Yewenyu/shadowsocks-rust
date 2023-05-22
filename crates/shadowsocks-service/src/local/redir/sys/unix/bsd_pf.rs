@@ -224,7 +224,7 @@ impl PacketFilter {
                 return Err(Error::from_raw_os_error(err as i32));
             }
 
-            let (_, dst_addr) = SockAddr::init(|dst_addr, addr_len| {
+            let (_, dst_addr) = SockAddr::try_init(|dst_addr, addr_len| {
                 if pnl.af == libc::AF_INET as libc::sa_family_t {
                     let dst_addr: &mut libc::sockaddr_in = &mut *(dst_addr as *mut _);
                     dst_addr.sin_family = pnl.af;
@@ -273,6 +273,6 @@ pub static PF: Lazy<PacketFilter> = Lazy::new(|| match PacketFilter::open() {
         panic!("open /dev/pf permission denied, consider restart with root user");
     }
     Err(err) => {
-        panic!("open /dev/pf {}", err);
+        panic!("open /dev/pf {err}");
     }
 });

@@ -441,16 +441,14 @@ where
                     err
                 );
             }
-        } else {
-            if let Err(err) = self.dispatch_received_proxied_packet(target_addr, data).await {
-                error!(
-                    "udp relay {} -> {} (proxied) with {} bytes, error: {}",
-                    self.peer_addr,
-                    target_addr,
-                    data.len(),
-                    err
-                );
-            }
+        } else if let Err(err) = self.dispatch_received_proxied_packet(target_addr, data).await {
+            error!(
+                "udp relay {} -> {} (proxied) with {} bytes, error: {}",
+                self.peer_addr,
+                target_addr,
+                data.len(),
+                err
+            );
         }
     }
 
@@ -578,11 +576,9 @@ where
             }
         };
 
-        let control = UdpSocketControlData {
-            client_session_id: self.client_session_id,
-            server_session_id: 0,
-            packet_id: self.client_packet_id,
-        };
+        let mut control = UdpSocketControlData::default();
+        control.client_session_id = self.client_session_id;
+        control.packet_id = self.client_packet_id;
 
         match socket.send_with_ctrl(target_addr, &control, data).await {
             Ok(..) => return Ok(()),

@@ -11,7 +11,7 @@
 //! +--------+-----------+-----------+
 //! ```
 
-use std::io::{self, Cursor, ErrorKind};
+use std::io::Cursor;
 
 use byte_string::ByteStr;
 use bytes::{BufMut, BytesMut};
@@ -20,8 +20,24 @@ use log::trace;
 use crate::{
     context::Context,
     crypto::{v1::Cipher, CipherKind},
-    relay::socks5::Address,
+    relay::socks5::{Address, Error as Socks5Error},
 };
+
+/// AEAD protocol error
+#[derive(thiserror::Error, Debug)]
+pub enum ProtocolError {
+    #[error("packet too short for salt, at least {0} bytes, but only {1} bytes")]
+    PacketTooShortForSalt(usize, usize),
+    #[error("packet too short for tag, at least {0} bytes, but only {1} bytes")]
+    PacketTooShortForTag(usize, usize),
+    #[error("invalid address in packet, {0}")]
+    InvalidAddress(Socks5Error),
+    #[error("decrypt payload failed")]
+    DecryptPayloadError,
+}
+
+/// AEAD protocol result
+pub type ProtocolResult<T> = Result<T, ProtocolError>;
 
 /// Encrypt UDP AEAD protocol packet
 pub fn encrypt_payload_aead(
@@ -61,17 +77,16 @@ pub fn encrypt_payload_aead(
 }
 
 /// Decrypt UDP AEAD protocol packet
-pub async fn decrypt_payload_aead(
+pub fn decrypt_payload_aead(
     _context: &Context,
     method: CipherKind,
     key: &[u8],
     payload: &mut [u8],
-) -> io::Result<(usize, Address)> {
+) -> ProtocolResult<(usize, Address)> {
     let plen = payload.len();
     let salt_len = method.salt_len();
     if plen < salt_len {
-        let err = io::Error::new(ErrorKind::InvalidData, "udp packet too short for salt");
-        return Err(err);
+        return Err(ProtocolError::PacketTooShortForSalt(salt_len, plen));
     }
 
     let (salt, data) = payload.split_at_mut(salt_len);
@@ -83,18 +98,18 @@ pub async fn decrypt_payload_aead(
     let tag_len = cipher.tag_len();
 
     if data.len() < tag_len {
-        return Err(io::Error::new(io::ErrorKind::Other, "udp packet too short for tag"));
+        return Err(ProtocolError::PacketTooShortForTag(tag_len, data.len()));
     }
 
     if !cipher.decrypt_packet(data) {
-        return Err(io::Error::new(io::ErrorKind::Other, "invalid tag-in"));
+        return Err(ProtocolError::DecryptPayloadError);
     }
 
     // Truncate TAG
     let data_len = data.len() - tag_len;
     let data = &mut data[..data_len];
 
-    let (dn, addr) = parse_packet(data).await?;
+    let (dn, addr) = parse_packet(data)?;
 
     let data_length = data_len - dn;
     let data_start_idx = salt_len + dn;
@@ -105,16 +120,14 @@ pub async fn decrypt_payload_aead(
     Ok((data_length, addr))
 }
 
-async fn parse_packet(buf: &[u8]) -> io::Result<(usize, Address)> {
+#[inline]
+fn parse_packet(buf: &[u8]) -> ProtocolResult<(usize, Address)> {
     let mut cur = Cursor::new(buf);
-    match Address::read_from(&mut cur).await {
+    match Address::read_cursor(&mut cur) {
         Ok(address) => {
             let pos = cur.position() as usize;
             Ok((pos, address))
         }
-        Err(..) => {
-            let err = io::Error::new(ErrorKind::InvalidData, "parse udp packet Address failed");
-            Err(err)
-        }
+        Err(err) => Err(ProtocolError::InvalidAddress(err)),
     }
 }

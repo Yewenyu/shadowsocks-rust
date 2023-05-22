@@ -18,6 +18,27 @@ use crate::{
     crypto::{v1::Cipher, CipherKind},
 };
 
+/// Stream protocol error
+#[derive(thiserror::Error, Debug)]
+pub enum ProtocolError {
+    #[error(transparent)]
+    IoError(#[from] io::Error),
+    #[error("decrypt failed")]
+    DecryptError,
+}
+
+/// Stream protocol result
+pub type ProtocolResult<T> = Result<T, ProtocolError>;
+
+impl From<ProtocolError> for io::Error {
+    fn from(e: ProtocolError) -> io::Error {
+        match e {
+            ProtocolError::IoError(err) => err,
+            _ => io::Error::new(ErrorKind::Other, e),
+        }
+    }
+}
+
 enum DecryptReadState {
     WaitIv { key: Bytes },
     Read,
@@ -30,6 +51,7 @@ pub struct DecryptedReader {
     buffer: BytesMut,
     method: CipherKind,
     iv: Option<Bytes>,
+    has_handshaked: bool,
 }
 
 impl DecryptedReader {
@@ -43,6 +65,7 @@ impl DecryptedReader {
                 buffer: BytesMut::with_capacity(method.iv_len()),
                 method,
                 iv: None,
+                has_handshaked: false,
             }
         } else {
             DecryptedReader {
@@ -51,6 +74,7 @@ impl DecryptedReader {
                 buffer: BytesMut::new(),
                 method,
                 iv: Some(Bytes::new()),
+                has_handshaked: false,
             }
         }
     }
@@ -66,7 +90,7 @@ impl DecryptedReader {
         context: &Context,
         stream: &mut S,
         buf: &mut ReadBuf<'_>,
-    ) -> Poll<io::Result<()>>
+    ) -> Poll<ProtocolResult<()>>
     where
         S: AsyncRead + Unpin + ?Sized,
     {
@@ -79,6 +103,7 @@ impl DecryptedReader {
                     self.buffer.clear();
                     self.buffer.truncate(0);
                     self.state = DecryptReadState::Read;
+                    self.has_handshaked = true;
                 }
                 DecryptReadState::Read => {
                     let before_n = buf.filled().len();
@@ -92,7 +117,7 @@ impl DecryptedReader {
 
                     let cipher = self.cipher.as_mut().expect("cipher is None");
                     if !cipher.decrypt_packet(m) {
-                        return Err(io::Error::new(ErrorKind::Other, "stream cipher decrypt failed")).into();
+                        return Err(ProtocolError::DecryptError).into();
                     }
 
                     return Ok(()).into();
@@ -107,7 +132,7 @@ impl DecryptedReader {
         context: &Context,
         stream: &mut S,
         key: &[u8],
-    ) -> Poll<io::Result<()>>
+    ) -> Poll<ProtocolResult<()>>
     where
         S: AsyncRead + Unpin + ?Sized,
     {
@@ -115,7 +140,7 @@ impl DecryptedReader {
 
         let n = ready!(self.poll_read_exact(cx, stream, iv_len))?;
         if n < iv_len {
-            return Err(ErrorKind::UnexpectedEof.into()).into();
+            return Err(io::Error::from(ErrorKind::UnexpectedEof).into()).into();
         }
 
         let iv = &self.buffer[..iv_len];
@@ -162,6 +187,11 @@ impl DecryptedReader {
 
         Ok(size).into()
     }
+
+    /// Check if handshake finished
+    pub fn handshaked(&self) -> bool {
+        self.has_handshaked
+    }
 }
 
 enum EncryptWriteState {
@@ -203,7 +233,7 @@ impl EncryptedWriter {
         cx: &mut task::Context<'_>,
         stream: &mut S,
         buf: &[u8],
-    ) -> Poll<io::Result<usize>>
+    ) -> Poll<ProtocolResult<usize>>
     where
         S: AsyncWrite + Unpin + ?Sized,
     {
@@ -219,7 +249,7 @@ impl EncryptedWriter {
                     while *pos < self.buffer.len() {
                         let n = ready!(Pin::new(&mut *stream).poll_write(cx, &self.buffer[*pos..]))?;
                         if n == 0 {
-                            return Err(ErrorKind::UnexpectedEof.into()).into();
+                            return Err(io::Error::from(ErrorKind::UnexpectedEof).into()).into();
                         }
                         *pos += n;
                     }

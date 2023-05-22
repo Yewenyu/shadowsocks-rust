@@ -32,16 +32,15 @@ jobs:
           - mipsel-unknown-linux-musl
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: Install Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          target: ${{ matrix.target }}
-          toolchain: nightly
-          default: true
-          override: true
+        run: |
+          rustup set profile minimal
+          rustup toolchain install stable
+          rustup default stable
+          rustup override set stable
+          rustup target add --toolchain stable ${{ matrix.target }}
 
       - name: Install cross
         run: cargo install cross
@@ -62,10 +61,6 @@ jobs:
             fi
           fi
 
-          if [[ "$compile_target" == "aarch64-"* ]]; then
-            compile_features="$compile_features -f armv8 -f neon"
-          fi
-
           cd build
           ./build-release -t ${{ matrix.target }} $compile_features $compile_compress
 
@@ -80,7 +75,7 @@ jobs:
   build-unix:
     runs-on: ${{ matrix.os }}
     env:
-      BUILD_EXTRA_FEATURES: "local-redir local-tun armv8 neon"
+      BUILD_EXTRA_FEATURES: "local-redir local-tun"
       RUST_BACKTRACE: full
     strategy:
       matrix:
@@ -90,7 +85,7 @@ jobs:
           - x86_64-apple-darwin
           - aarch64-apple-darwin
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: Install GNU tar
         if: runner.os == 'macOS'
@@ -100,19 +95,12 @@ jobs:
           echo "/usr/local/opt/gnu-tar/libexec/gnubin" >> $GITHUB_PATH
 
       - name: Install Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          target: ${{ matrix.target }}
-          toolchain: nightly
-          default: true
-          override: true
-
-      # https://github.com/actions/virtual-environments/issues/2557#issuecomment-769611326
-      - if: ${{ matrix.target }} == 'aarch64-apple-darwin'
         run: |
-          sudo xcode-select -s /Applications/Xcode_12.4.app &&
-          sudo rm -Rf /Library/Developer/CommandLineTools/SDKs/*
+          rustup set profile minimal
+          rustup toolchain install stable
+          rustup default stable
+          rustup override set stable
+          rustup target add --toolchain stable ${{ matrix.target }}
 
       - name: Build release
         shell: bash
@@ -133,15 +121,14 @@ jobs:
       RUSTFLAGS: "-C target-feature=+crt-static"
       RUST_BACKTRACE: full
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: Install Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: nightly
-          default: true
-          override: true
+        run: |
+          rustup set profile minimal
+          rustup toolchain install stable
+          rustup default stable
+          rustup override set stable
 
       - name: Build release
         run: |

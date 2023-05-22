@@ -65,7 +65,16 @@ use serde::{Deserialize, Serialize};
 #[cfg(any(feature = "local-tunnel", feature = "local-dns"))]
 use shadowsocks::relay::socks5::Address;
 use shadowsocks::{
-    config::{ManagerAddr, Mode, ReplayAttackPolicy, ServerAddr, ServerConfig, ServerWeight},
+    config::{
+        ManagerAddr,
+        Mode,
+        ReplayAttackPolicy,
+        ServerAddr,
+        ServerConfig,
+        ServerUser,
+        ServerUserManager,
+        ServerWeight,
+    },
     crypto::CipherKind,
     plugin::PluginConfig,
 };
@@ -139,6 +148,8 @@ struct SSConfig {
     plugin_opts: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     plugin_args: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    plugin_mode: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     timeout: Option<u64>,
@@ -162,6 +173,7 @@ struct SSConfig {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     no_delay: Option<bool>,
+
     #[serde(skip_serializing_if = "Option::is_none")]
     keep_alive: Option<u64>,
 
@@ -178,8 +190,21 @@ struct SSConfig {
     fast_open: Option<bool>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
+    mptcp: Option<bool>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg(any(target_os = "linux", target_os = "android"))]
     outbound_fwmark: Option<u32>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg(target_os = "freebsd")]
+    outbound_user_cookie: Option<u32>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    outbound_bind_addr: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    outbound_bind_interface: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     security: Option<SSSecurityConfig>,
@@ -255,11 +280,26 @@ struct SSLocalExtConfig {
     #[cfg(feature = "local-tun")]
     #[serde(skip_serializing_if = "Option::is_none")]
     tun_interface_address: Option<String>,
+    #[cfg(feature = "local-tun")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tun_interface_destination: Option<String>,
+    #[cfg(all(feature = "local-tun", unix))]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tun_device_fd_from_path: Option<String>,
 
     /// SOCKS5
     #[cfg(feature = "local")]
     #[serde(skip_serializing_if = "Option::is_none")]
     socks5_auth_config_path: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    acl: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct SSServerUserConfig {
+    name: String,
+    password: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -277,6 +317,9 @@ struct SSServerExtConfig {
     method: String,
 
     #[serde(skip_serializing_if = "Option::is_none")]
+    users: Option<Vec<SSServerUserConfig>>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     disabled: Option<bool>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -285,6 +328,8 @@ struct SSServerExtConfig {
     plugin_opts: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     plugin_args: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    plugin_mode: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     timeout: Option<u64>,
@@ -301,6 +346,9 @@ struct SSServerExtConfig {
     tcp_weight: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     udp_weight: Option<f32>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    acl: Option<String>,
 }
 
 /// Server config type
@@ -829,6 +877,9 @@ pub struct LocalConfig {
     /// Tun interface's address and netmask
     #[cfg(feature = "local-tun")]
     pub tun_interface_address: Option<IpNet>,
+    /// Tun interface's destination address and netmask
+    #[cfg(feature = "local-tun")]
+    pub tun_interface_destination: Option<IpNet>,
     /// Tun interface's file descriptor
     #[cfg(all(feature = "local-tun", unix))]
     pub tun_device_fd: Option<std::os::unix::io::RawFd>,
@@ -872,6 +923,8 @@ impl LocalConfig {
             tun_interface_name: None,
             #[cfg(feature = "local-tun")]
             tun_interface_address: None,
+            #[cfg(feature = "local-tun")]
+            tun_interface_destination: None,
             #[cfg(all(feature = "local-tun", unix))]
             tun_device_fd: None,
             #[cfg(all(feature = "local-tun", unix))]
@@ -1000,13 +1053,56 @@ pub struct BalancerConfig {
     pub check_best_interval: Option<Duration>,
 }
 
+/// Address for local to report flow statistic data
+#[cfg(feature = "local-flow-stat")]
+#[derive(Debug, Clone)]
+pub enum LocalFlowStatAddress {
+    /// UNIX Domain Socket address
+    #[cfg(unix)]
+    UnixStreamPath(PathBuf),
+    /// TCP Stream Address
+    TcpStreamAddr(SocketAddr),
+}
+
+/// Server instance config
+#[derive(Debug, Clone)]
+pub struct ServerInstanceConfig {
+    /// Server's config
+    pub config: ServerConfig,
+    /// Server's private ACL, set to `None` will use the global `AccessControl`
+    pub acl: Option<AccessControl>,
+}
+
+impl ServerInstanceConfig {
+    /// Create with `ServerConfig`
+    pub fn with_server_config(config: ServerConfig) -> ServerInstanceConfig {
+        ServerInstanceConfig { config, acl: None }
+    }
+}
+
+/// Local instance config
+#[derive(Debug, Clone)]
+pub struct LocalInstanceConfig {
+    /// Local server's config
+    pub config: LocalConfig,
+    /// Server's private ACL, set to `None` will use the global `AccessControl`
+    pub acl: Option<AccessControl>,
+}
+
+impl LocalInstanceConfig {
+    /// Create with `LocalConfig`
+    pub fn with_local_config(config: LocalConfig) -> LocalInstanceConfig {
+        LocalInstanceConfig { config, acl: None }
+    }
+}
+
 /// Configuration
 #[derive(Clone, Debug)]
 pub struct Config {
     /// Remote ShadowSocks server configurations
-    pub server: Vec<ServerConfig>,
+    pub server: Vec<ServerInstanceConfig>,
     /// Local server configuration
-    pub local: Vec<LocalConfig>,
+    pub local: Vec<LocalInstanceConfig>,
 
     /// DNS configuration, uses system-wide DNS configuration by default
     ///
@@ -1035,6 +1131,8 @@ pub struct Config {
     ///
     /// If this is not set, sockets will be set with a default timeout
     pub keep_alive: Option<Duration>,
+    /// Multipath-TCP
+    pub mptcp: bool,
 
     /// `RLIMIT_NOFILE` option for *nix systems
     #[cfg(all(unix, not(target_os = "android")))]
@@ -1074,12 +1172,14 @@ pub struct Config {
     /// Maximum number of UDP Associations, default is unconfigured
     pub udp_max_associations: Option<usize>,
 
-    /// ACL configuration
+    /// ACL configuration (Global)
+    ///
+    /// Could be overwritten by servers/locals' private `acl`
     pub acl: Option<AccessControl>,
 
     /// Flow statistic report Unix socket path (only for Android)
     #[cfg(feature = "local-flow-stat")]
-    pub stat_path: Option<PathBuf>,
+    pub local_stat_addr: Option<LocalFlowStatAddress>,
 
     /// Replay attack policy
     pub security: SecurityConfig,
@@ -1170,6 +1270,7 @@ impl Config {
             no_delay: false,
             fast_open: false,
             keep_alive: None,
+            mptcp: false,
 
             #[cfg(all(unix, not(target_os = "android")))]
             nofile: None,
@@ -1198,7 +1299,7 @@ impl Config {
             acl: None,
 
             #[cfg(feature = "local-flow-stat")]
-            stat_path: None,
+            local_stat_addr: None,
 
             security: SecurityConfig::default(),
 
@@ -1287,13 +1388,19 @@ impl Config {
                                 let err = Error::new(
                                     ErrorKind::Malformed,
                                     "`protocol` invalid",
-                                    Some(format!("unrecognized protocol {}", p)),
+                                    Some(format!("unrecognized protocol {p}")),
                                 );
                                 return Err(err);
                             }
                         },
                     };
-                    nconfig.local.push(local_config);
+
+                    let local_instance = LocalInstanceConfig {
+                        config: local_config,
+                        acl: None,
+                    };
+
+                    nconfig.local.push(local_instance);
                 }
 
                 // Ext locals
@@ -1312,7 +1419,7 @@ impl Config {
                                     let err = Error::new(
                                         ErrorKind::Malformed,
                                         "`protocol` invalid",
-                                        Some(format!("unrecognized protocol {}", p)),
+                                        Some(format!("unrecognized protocol {p}")),
                                     );
                                     return Err(err);
                                 }
@@ -1449,12 +1556,37 @@ impl Config {
                             local_config.tun_interface_name = Some(tun_interface_name);
                         }
 
+                        #[cfg(all(feature = "local-tun", unix))]
+                        if let Some(tun_device_fd_from_path) = local.tun_device_fd_from_path {
+                            local_config.tun_device_fd_from_path = Some(From::from(tun_device_fd_from_path));
+                        }
+
                         #[cfg(feature = "local")]
                         if let Some(socks5_auth_config_path) = local.socks5_auth_config_path {
                             local_config.socks5_auth = Socks5AuthConfig::load_from_file(&socks5_auth_config_path)?;
                         }
 
-                        nconfig.local.push(local_config);
+                        let mut local_instance = LocalInstanceConfig {
+                            config: local_config,
+                            acl: None,
+                        };
+
+                        if let Some(acl_path) = local.acl {
+                            let acl = match AccessControl::load_from_file(&acl_path) {
+                                Ok(acl) => acl,
+                                Err(err) => {
+                                    let err = Error::new(
+                                        ErrorKind::Invalid,
+                                        "acl loading failed",
+                                        Some(format!("file {acl_path}, error: {err}")),
+                                    );
+                                    return Err(err);
+                                }
+                            };
+                            local_instance.acl = Some(acl);
+                        }
+
+                        nconfig.local.push(local_instance);
                     }
                 }
             }
@@ -1484,7 +1616,7 @@ impl Config {
                         let err = Error::new(
                             ErrorKind::Invalid,
                             "unsupported method",
-                            Some(format!("`{}` is not a supported method", m)),
+                            Some(format!("`{m}` is not a supported method")),
                         );
                         return Err(err);
                     }
@@ -1500,7 +1632,7 @@ impl Config {
                             let err = Error::new(
                                 ErrorKind::MissingField,
                                 "`password` is required",
-                                Some(format!("`password` is required for method {}", method)),
+                                Some(format!("`password` is required for method {method}")),
                             );
                             return Err(err);
                         }
@@ -1518,6 +1650,20 @@ impl Config {
                             plugin: p.clone(),
                             plugin_opts: config.plugin_opts.clone(),
                             plugin_args: config.plugin_args.clone().unwrap_or_default(),
+                            plugin_mode: match config.plugin_mode {
+                                None => Mode::TcpOnly,
+                                Some(ref mode) => match mode.parse::<Mode>() {
+                                    Ok(m) => m,
+                                    Err(..) => {
+                                        let e = Error::new(
+                                            ErrorKind::Malformed,
+                                            "malformed `plugin_mode`, must be one of `tcp_only`, `udp_only` and `tcp_and_udp`",
+                                            None,
+                                        );
+                                        return Err(e);
+                                    }
+                                },
+                            },
                         };
                         nsvr.set_plugin(plugin);
                     }
@@ -1527,7 +1673,12 @@ impl Config {
                     nsvr.set_timeout(timeout);
                 }
 
-                nconfig.server.push(nsvr);
+                let server_instance = ServerInstanceConfig {
+                    config: nsvr,
+                    acl: None,
+                };
+
+                nconfig.server.push(server_instance);
             }
             (None, None, None, Some(_)) if config_type.is_manager() => {
                 // Set the default method for manager
@@ -1584,7 +1735,7 @@ impl Config {
                             let err = Error::new(
                                 ErrorKind::MissingField,
                                 "`password` is required",
-                                Some(format!("`password` is required for method {}", method)),
+                                Some(format!("`password` is required for method {method}")),
                             );
                             return Err(err);
                         }
@@ -1592,6 +1743,29 @@ impl Config {
                 };
 
                 let mut nsvr = ServerConfig::new(addr, password, method);
+
+                // Extensible Identity Header, Users
+                if let Some(users) = svr.users {
+                    let mut user_manager = ServerUserManager::new();
+
+                    for user in users {
+                        let user = match ServerUser::with_encoded_key(user.name, &user.password) {
+                            Ok(u) => u,
+                            Err(..) => {
+                                let err = Error::new(
+                                    ErrorKind::Malformed,
+                                    "`users[].password` should be base64 encoded",
+                                    None,
+                                );
+                                return Err(err);
+                            }
+                        };
+
+                        user_manager.add_user(user);
+                    }
+
+                    nsvr.set_user_manager(user_manager);
+                }
 
                 match svr.mode {
                     Some(mode) => match mode.parse::<Mode>() {
@@ -1617,6 +1791,20 @@ impl Config {
                             plugin: p,
                             plugin_opts: svr.plugin_opts,
                             plugin_args: svr.plugin_args.unwrap_or_default(),
+                            plugin_mode: match svr.plugin_mode {
+                                None => Mode::TcpOnly,
+                                Some(ref mode) => match mode.parse::<Mode>() {
+                                    Ok(m) => m,
+                                    Err(..) => {
+                                        let e = Error::new(
+                                            ErrorKind::Malformed,
+                                            "malformed `plugin_mode`, must be one of `tcp_only`, `udp_only` and `tcp_and_udp`",
+                                            None,
+                                        );
+                                        return Err(e);
+                                    }
+                                },
+                            },
                         };
                         nsvr.set_plugin(plugin);
                     }
@@ -1651,7 +1839,27 @@ impl Config {
                     nsvr.set_weight(weight);
                 }
 
-                nconfig.server.push(nsvr);
+                let mut server_instance = ServerInstanceConfig {
+                    config: nsvr,
+                    acl: None,
+                };
+
+                if let Some(acl_path) = svr.acl {
+                    let acl = match AccessControl::load_from_file(&acl_path) {
+                        Ok(acl) => acl,
+                        Err(err) => {
+                            let err = Error::new(
+                                ErrorKind::Invalid,
+                                "acl loading failed",
+                                Some(format!("file {acl_path}, error: {err}")),
+                            );
+                            return Err(err);
+                        }
+                    };
+                    server_instance.acl = Some(acl);
+                }
+
+                nconfig.server.push(server_instance);
             }
         }
 
@@ -1659,7 +1867,8 @@ impl Config {
         if let Some(timeout) = config.timeout {
             let timeout = Duration::from_secs(timeout);
             // Set as a default timeout
-            for svr in &mut nconfig.server {
+            for inst in &mut nconfig.server {
+                let svr = &mut inst.config;
                 if svr.timeout().is_none() {
                     svr.set_timeout(timeout);
                 }
@@ -1697,7 +1906,7 @@ impl Config {
                         let err = Error::new(
                             ErrorKind::Invalid,
                             "unsupported method",
-                            Some(format!("`{}` is not a supported method", m)),
+                            Some(format!("`{m}` is not a supported method")),
                         );
                         return Err(err);
                     }
@@ -1712,6 +1921,20 @@ impl Config {
                         plugin: p,
                         plugin_opts: config.plugin_opts,
                         plugin_args: config.plugin_args.unwrap_or_default(),
+                        plugin_mode: match config.plugin_mode {
+                            None => Mode::TcpOnly,
+                            Some(ref mode) => match mode.parse::<Mode>() {
+                                Ok(m) => m,
+                                Err(..) => {
+                                    let e = Error::new(
+                                        ErrorKind::Malformed,
+                                        "malformed `plugin_mode`, must be one of `tcp_only`, `udp_only` and `tcp_and_udp`",
+                                        None,
+                                    );
+                                    return Err(e);
+                                }
+                            },
+                        },
                     });
                 }
             }
@@ -1744,6 +1967,11 @@ impl Config {
             nconfig.keep_alive = Some(Duration::from_secs(d));
         }
 
+        // Multipath-TCP
+        if let Some(b) = config.mptcp {
+            nconfig.mptcp = b;
+        }
+
         // UDP
         nconfig.udp_timeout = config.udp_timeout.map(Duration::from_secs);
 
@@ -1771,6 +1999,26 @@ impl Config {
         if let Some(fwmark) = config.outbound_fwmark {
             nconfig.outbound_fwmark = Some(fwmark);
         }
+
+        // SO_USER_COOKIE
+        #[cfg(target_os = "freebsd")]
+        if let Some(user_cookie) = config.outbound_user_cookie {
+            nconfig.outbound_user_cookie = Some(user_cookie);
+        }
+
+        // Outbound bind() address
+        if let Some(bind_addr) = config.outbound_bind_addr {
+            match bind_addr.parse::<IpAddr>() {
+                Ok(b) => nconfig.outbound_bind_addr = Some(b),
+                Err(..) => {
+                    let err = Error::new(ErrorKind::Invalid, "invalid outbound_bind_addr", None);
+                    return Err(err);
+                }
+            }
+        }
+
+        // Bind device / interface
+        nconfig.outbound_bind_interface = config.outbound_bind_interface;
 
         // Security
         if let Some(sec) = config.security {
@@ -1802,7 +2050,7 @@ impl Config {
                     let err = Error::new(
                         ErrorKind::Invalid,
                         "acl loading failed",
-                        Some(format!("file {}, error: {}", acl_path, err)),
+                        Some(format!("file {acl_path}, error: {err}")),
                     );
                     return Err(err);
                 }
@@ -1910,26 +2158,12 @@ impl Config {
             };
 
             if protocol.enable_udp() {
-                c.add_name_server(NameServerConfig {
-                    socket_addr,
-                    protocol: Protocol::Udp,
-                    tls_dns_name: None,
-                    trust_nx_responses: false,
-                    #[cfg(any(feature = "dns-over-tls", feature = "dns-over-https"))]
-                    tls_config: None,
-                    bind_addr: None,
-                });
+                let ns_config = NameServerConfig::new(socket_addr, Protocol::Udp);
+                c.add_name_server(ns_config);
             }
             if protocol.enable_tcp() {
-                c.add_name_server(NameServerConfig {
-                    socket_addr,
-                    protocol: Protocol::Tcp,
-                    tls_dns_name: None,
-                    trust_nx_responses: false,
-                    #[cfg(any(feature = "dns-over-tls", feature = "dns-over-https"))]
-                    tls_config: None,
-                    bind_addr: None,
-                });
+                let ns_config = NameServerConfig::new(socket_addr, Protocol::Tcp);
+                c.add_name_server(ns_config);
             }
         }
 
@@ -1969,7 +2203,9 @@ impl Config {
 
     /// Check if there are any plugin are enabled with servers
     pub fn has_server_plugins(&self) -> bool {
-        for server in &self.server {
+        for inst in &self.server {
+            let server = &inst.config;
+
             if server.plugin().is_some() {
                 return true;
             }
@@ -1990,7 +2226,7 @@ impl Config {
             }
 
             for local_config in &self.local {
-                local_config.check_integrity()?;
+                local_config.config.check_integrity()?;
             }
 
             // Balancer related checks
@@ -2027,7 +2263,9 @@ impl Config {
             return Err(err);
         }
 
-        for server in &self.server {
+        for inst in &self.server {
+            let server = &inst.config;
+
             // Plugin shouldn't be an empty string
             if let Some(plugin) = server.plugin() {
                 if plugin.plugin.trim().is_empty() {
@@ -2068,6 +2306,21 @@ impl Config {
                     }
                 }
             }
+
+            // Users' key must match key length
+            if let Some(user_manager) = server.user_manager() {
+                let key_len = server.method().key_len();
+                for user in user_manager.users_iter() {
+                    if user.key().len() != key_len {
+                        let err = Error::new(
+                            ErrorKind::Malformed,
+                            "`users[].password` length must be exactly the same as method's key length",
+                            None,
+                        );
+                        return Err(err);
+                    }
+                }
+            }
         }
 
         Ok(())
@@ -2082,8 +2335,9 @@ impl fmt::Display for Config {
 
         // Locals
         if !self.local.is_empty() {
-            if self.local.len() == 1 && self.local[0].is_basic() {
-                let local = &self.local[0];
+            if self.local.len() == 1 && self.local[0].config.is_basic() {
+                let local_instance = &self.local[0];
+                let local = &local_instance.config;
                 if let Some(ref a) = local.addr {
                     jconf.local_address = Some(match a {
                         ServerAddr::SocketAddr(ref sa) => sa.ip().to_string(),
@@ -2094,12 +2348,20 @@ impl fmt::Display for Config {
                         ServerAddr::DomainName(.., port) => *port,
                     });
                 }
+
                 if local.protocol != ProtocolType::Socks {
                     jconf.protocol = Some(local.protocol.as_str().to_owned());
                 }
+
+                // ACL
+                if let Some(ref acl) = local_instance.acl {
+                    jconf.acl = Some(acl.file_path().to_str().unwrap().to_owned());
+                }
             } else {
                 let mut jlocals = Vec::with_capacity(self.local.len());
-                for local in &self.local {
+                for local_instance in &self.local {
+                    let local = &local_instance.config;
+
                     let jlocal = SSLocalExtConfig {
                         local_address: local.addr.as_ref().map(|a| match a {
                             ServerAddr::SocketAddr(ref sa) => sa.ip().to_string(),
@@ -2192,9 +2454,21 @@ impl fmt::Display for Config {
                         tun_interface_name: local.tun_interface_name.clone(),
                         #[cfg(feature = "local-tun")]
                         tun_interface_address: local.tun_interface_address.as_ref().map(ToString::to_string),
+                        #[cfg(feature = "local-tun")]
+                        tun_interface_destination: local.tun_interface_destination.as_ref().map(ToString::to_string),
+                        #[cfg(all(feature = "local-tun", unix))]
+                        tun_device_fd_from_path: local
+                            .tun_device_fd_from_path
+                            .as_ref()
+                            .map(|p| p.to_str().expect("tun_device_fd_from_path is not utf-8").to_owned()),
 
                         #[cfg(feature = "local")]
                         socks5_auth_config_path: None,
+
+                        acl: local_instance
+                            .acl
+                            .as_ref()
+                            .and_then(|a| a.file_path().to_str().map(ToOwned::to_owned)),
                     };
                     jlocals.push(jlocal);
                 }
@@ -2206,8 +2480,9 @@ impl fmt::Display for Config {
         match self.server.len() {
             0 => {}
             // For 1 server, uses standard configure format
-            1 if self.server[0].is_basic() => {
-                let svr = &self.server[0];
+            1 if self.server[0].config.is_basic() => {
+                let inst = &self.server[0];
+                let svr = &inst.config;
 
                 jconf.server = Some(match *svr.addr() {
                     ServerAddr::SocketAddr(ref sa) => sa.ip().to_string(),
@@ -2232,14 +2507,27 @@ impl fmt::Display for Config {
                         Some(p.plugin_args.clone())
                     }
                 });
+                jconf.plugin_mode = match svr.plugin() {
+                    None => None,
+                    Some(p) => match p.plugin_mode {
+                        Mode::TcpOnly => None,
+                        _ => Some(p.plugin_mode.to_string()),
+                    },
+                };
                 jconf.timeout = svr.timeout().map(|t| t.as_secs());
                 jconf.mode = Some(svr.mode().to_string());
+
+                if let Some(ref acl) = inst.acl {
+                    jconf.acl = Some(acl.file_path().to_str().unwrap().to_owned());
+                }
             }
             // For >1 servers, uses extended multiple server format
             _ => {
                 let mut vsvr = Vec::new();
 
-                for svr in &self.server {
+                for inst in &self.server {
+                    let svr = &inst.config;
+
                     vsvr.push(SSServerExtConfig {
                         server: match *svr.addr() {
                             ServerAddr::SocketAddr(ref sa) => sa.ip().to_string(),
@@ -2255,6 +2543,16 @@ impl fmt::Display for Config {
                             Some(svr.password().to_string())
                         },
                         method: svr.method().to_string(),
+                        users: svr.user_manager().map(|m| {
+                            let mut vu = Vec::new();
+                            for u in m.users_iter() {
+                                vu.push(SSServerUserConfig {
+                                    name: u.name().to_owned(),
+                                    password: u.encoded_key(),
+                                });
+                            }
+                            vu
+                        }),
                         disabled: None,
                         plugin: svr.plugin().map(|p| p.plugin.to_string()),
                         plugin_opts: svr.plugin().and_then(|p| p.plugin_opts.clone()),
@@ -2265,6 +2563,13 @@ impl fmt::Display for Config {
                                 Some(p.plugin_args.clone())
                             }
                         }),
+                        plugin_mode: match svr.plugin() {
+                            None => None,
+                            Some(p) => match p.plugin_mode {
+                                Mode::TcpOnly => None,
+                                _ => Some(p.plugin_mode.to_string()),
+                            },
+                        },
                         timeout: svr.timeout().map(|t| t.as_secs()),
                         remarks: svr.remarks().map(ToOwned::to_owned),
                         id: svr.id().map(ToOwned::to_owned),
@@ -2279,6 +2584,10 @@ impl fmt::Display for Config {
                         } else {
                             None
                         },
+                        acl: inst
+                            .acl
+                            .as_ref()
+                            .and_then(|a| a.file_path().to_str().map(ToOwned::to_owned)),
                     });
                 }
 
@@ -2336,6 +2645,10 @@ impl fmt::Display for Config {
             jconf.keep_alive = Some(keepalive.as_secs());
         }
 
+        if self.mptcp {
+            jconf.mptcp = Some(self.mptcp);
+        }
+
         match self.dns {
             DnsConfig::System => {}
             #[cfg(feature = "trust-dns")]
@@ -2369,6 +2682,14 @@ impl fmt::Display for Config {
         {
             jconf.outbound_fwmark = self.outbound_fwmark;
         }
+
+        #[cfg(target_os = "freebsd")]
+        {
+            jconf.outbound_user_cookie = self.outbound_user_cookie;
+        }
+
+        jconf.outbound_bind_addr = self.outbound_bind_addr.map(|i| i.to_string());
+        jconf.outbound_bind_interface = self.outbound_bind_interface.clone();
 
         // Security
         if self.security.replay_attack.policy != ReplayAttackPolicy::default() {

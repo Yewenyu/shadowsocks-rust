@@ -115,7 +115,7 @@ where
             Some(d) => {
                 match time::timeout(
                     d,
-                    OutboundTcpStream::connect_server_with_opts(&context, svr_cfg.external_addr(), opts),
+                    OutboundTcpStream::connect_server_with_opts(&context, svr_cfg.tcp_external_addr(), opts),
                 )
                 .await
                 {
@@ -129,13 +129,13 @@ where
                     }
                 }
             }
-            None => OutboundTcpStream::connect_server_with_opts(&context, svr_cfg.external_addr(), opts).await?,
+            None => OutboundTcpStream::connect_server_with_opts(&context, svr_cfg.tcp_external_addr(), opts).await?,
         };
 
         trace!(
             "connected tcp remote {} (outbound: {}) with {:?}",
             svr_cfg.addr(),
-            svr_cfg.external_addr(),
+            svr_cfg.tcp_external_addr(),
             opts
         );
 
@@ -150,7 +150,15 @@ where
         A: Into<Address>,
     {
         let addr = addr.into();
-        let stream = CryptoStream::from_stream(&context, stream, StreamType::Client, svr_cfg.method(), svr_cfg.key());
+        let stream = CryptoStream::from_stream_with_identity(
+            &context,
+            stream,
+            StreamType::Client,
+            svr_cfg.method(),
+            svr_cfg.key(),
+            svr_cfg.identity_keys(),
+            None,
+        );
 
         #[cfg(not(feature = "aead-cipher-2022"))]
         let reader_state = ProxyClientStreamReadState::Established;
@@ -200,7 +208,10 @@ where
         loop {
             match this.reader_state {
                 ProxyClientStreamReadState::Established => {
-                    return this.stream.poll_read_decrypted(cx, this.context, buf);
+                    return this
+                        .stream
+                        .poll_read_decrypted(cx, this.context, buf)
+                        .map_err(Into::into);
                 }
                 #[cfg(feature = "aead-cipher-2022")]
                 ProxyClientStreamReadState::CheckRequestNonce => {
@@ -318,7 +329,7 @@ where
                     return Ok(buf.len()).into();
                 }
                 ProxyClientStreamWriteState::Connected => {
-                    return this.stream.poll_write_encrypted(cx, buf);
+                    return this.stream.poll_write_encrypted(cx, buf).map_err(Into::into);
                 }
             }
         }
@@ -326,11 +337,11 @@ where
 
     #[inline]
     fn poll_flush(self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Result<(), io::Error>> {
-        self.project().stream.poll_flush(cx)
+        self.project().stream.poll_flush(cx).map_err(Into::into)
     }
 
     #[inline]
     fn poll_shutdown(self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Result<(), io::Error>> {
-        self.project().stream.poll_shutdown(cx)
+        self.project().stream.poll_shutdown(cx).map_err(Into::into)
     }
 }

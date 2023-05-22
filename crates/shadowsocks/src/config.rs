@@ -3,16 +3,21 @@
 #[cfg(unix)]
 use std::path::PathBuf;
 use std::{
+    collections::HashMap,
     error,
-    fmt::{self, Display},
+    fmt::{self, Debug, Display},
     net::SocketAddr,
     str::FromStr,
+    sync::Arc,
     time::Duration,
 };
 
-use base64::{decode_config, encode_config, URL_SAFE_NO_PAD};
+use base64::Engine as _;
+use byte_string::ByteStr;
+use bytes::Bytes;
 use cfg_if::cfg_if;
 use log::error;
+use thiserror::Error;
 use url::{self, Url};
 
 use crate::{
@@ -20,6 +25,27 @@ use crate::{
     plugin::PluginConfig,
     relay::socks5::Address,
 };
+
+const USER_KEY_BASE64_ENGINE: base64::engine::GeneralPurpose = base64::engine::GeneralPurpose::new(
+    &base64::alphabet::STANDARD,
+    base64::engine::GeneralPurposeConfig::new()
+        .with_encode_padding(true)
+        .with_decode_padding_mode(base64::engine::DecodePaddingMode::Indifferent),
+);
+
+const AEAD2022_PASSWORD_BASE64_ENGINE: base64::engine::GeneralPurpose = base64::engine::GeneralPurpose::new(
+    &base64::alphabet::STANDARD,
+    base64::engine::GeneralPurposeConfig::new()
+        .with_encode_padding(true)
+        .with_decode_padding_mode(base64::engine::DecodePaddingMode::Indifferent),
+);
+
+const URL_PASSWORD_BASE64_ENGINE: base64::engine::GeneralPurpose = base64::engine::GeneralPurpose::new(
+    &base64::alphabet::URL_SAFE,
+    base64::engine::GeneralPurposeConfig::new()
+        .with_encode_padding(false)
+        .with_decode_padding_mode(base64::engine::DecodePaddingMode::Indifferent),
+);
 
 /// Shadowsocks server type
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -145,6 +171,135 @@ impl ServerWeight {
     }
 }
 
+/// Server's user
+#[derive(Clone)]
+pub struct ServerUser {
+    name: String,
+    key: Bytes,
+    identity_hash: Bytes,
+}
+
+impl Debug for ServerUser {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("ServerUser")
+            .field("name", &self.name)
+            .field("key", &USER_KEY_BASE64_ENGINE.encode(&self.key))
+            .field("identity_hash", &ByteStr::new(&self.identity_hash))
+            .finish()
+    }
+}
+
+impl ServerUser {
+    /// Create a user
+    pub fn new<N, K>(name: N, key: K) -> ServerUser
+    where
+        N: Into<String>,
+        K: Into<Bytes>,
+    {
+        let name = name.into();
+        let key = key.into();
+
+        let hash = blake3::hash(&key);
+        let identity_hash = Bytes::from(hash.as_bytes()[0..16].to_owned());
+
+        ServerUser {
+            name,
+            key,
+            identity_hash,
+        }
+    }
+
+    /// Create a user from encoded key
+    pub fn with_encoded_key<N>(name: N, key: &str) -> Result<ServerUser, ServerUserError>
+    where
+        N: Into<String>,
+    {
+        let key = USER_KEY_BASE64_ENGINE.decode(key)?;
+        Ok(ServerUser::new(name, key))
+    }
+
+    /// Name of the user
+    pub fn name(&self) -> &str {
+        self.name.as_str()
+    }
+
+    /// Encryption key of user
+    pub fn key(&self) -> &[u8] {
+        self.key.as_ref()
+    }
+
+    /// Get Base64 encoded key of user
+    pub fn encoded_key(&self) -> String {
+        USER_KEY_BASE64_ENGINE.encode(&self.key)
+    }
+
+    /// User's identity hash
+    ///
+    /// https://github.com/Shadowsocks-NET/shadowsocks-specs/blob/main/2022-2-shadowsocks-2022-extensible-identity-headers.md
+    pub fn identity_hash(&self) -> &[u8] {
+        self.identity_hash.as_ref()
+    }
+
+    /// User's identity hash
+    ///
+    /// https://github.com/Shadowsocks-NET/shadowsocks-specs/blob/main/2022-2-shadowsocks-2022-extensible-identity-headers.md
+    pub fn clone_identity_hash(&self) -> Bytes {
+        self.identity_hash.clone()
+    }
+}
+
+/// ServerUser related errors
+#[derive(Debug, Clone, Error)]
+pub enum ServerUserError {
+    /// Invalid User key encoding
+    #[error("{0}")]
+    InvalidKeyEncoding(#[from] base64::DecodeError),
+}
+
+/// Server multi-users manager
+#[derive(Clone, Debug)]
+pub struct ServerUserManager {
+    users: HashMap<Bytes, Arc<ServerUser>>,
+}
+
+impl ServerUserManager {
+    /// Create a new manager
+    pub fn new() -> ServerUserManager {
+        ServerUserManager { users: HashMap::new() }
+    }
+
+    /// Add a new user
+    pub fn add_user(&mut self, user: ServerUser) {
+        self.users.insert(user.clone_identity_hash(), Arc::new(user));
+    }
+
+    /// Get user by hash key
+    pub fn get_user_by_hash(&self, user_hash: &[u8]) -> Option<&ServerUser> {
+        self.users.get(user_hash).map(AsRef::as_ref)
+    }
+
+    /// Get user by hash key cloned
+    pub fn clone_user_by_hash(&self, user_hash: &[u8]) -> Option<Arc<ServerUser>> {
+        self.users.get(user_hash).cloned()
+    }
+
+    /// Number of users
+    pub fn user_count(&self) -> usize {
+        self.users.len()
+    }
+
+    /// Iterate users
+    pub fn users_iter(&self) -> impl Iterator<Item = &ServerUser> {
+        self.users.values().map(|v| v.as_ref())
+    }
+}
+
+impl Default for ServerUserManager {
+    fn default() -> ServerUserManager {
+        ServerUserManager::new()
+    }
+}
+
 /// Configuration for a server
 #[derive(Clone, Debug)]
 pub struct ServerConfig {
@@ -158,6 +313,16 @@ pub struct ServerConfig {
     enc_key: Box<[u8]>,
     /// Handshake timeout (connect)
     timeout: Option<Duration>,
+
+    /// Extensible Identity Headers (AEAD-2022)
+    ///
+    /// For client, assemble EIH headers
+    identity_keys: Arc<Vec<Bytes>>,
+
+    /// Extensible Identity Headers (AEAD-2022)
+    ///
+    /// For server, support multi-users with EIH
+    user_manager: Option<Arc<ServerUserManager>>,
 
     /// Plugin config
     plugin: Option<PluginConfig>,
@@ -181,7 +346,7 @@ pub struct ServerConfig {
 fn make_derived_key(method: CipherKind, password: &str, enc_key: &mut [u8]) {
     if method.is_aead_2022() {
         // AEAD 2022 password is a base64 form of enc_key
-        match base64::decode_config(password, base64::STANDARD) {
+        match AEAD2022_PASSWORD_BASE64_ENGINE.decode(password) {
             Ok(v) => {
                 if v.len() != enc_key.len() {
                     panic!(
@@ -195,7 +360,7 @@ fn make_derived_key(method: CipherKind, password: &str, enc_key: &mut [u8]) {
                 enc_key.copy_from_slice(&v);
             }
             Err(err) => {
-                panic!("{} password {} is not base64 encoded, error: {}", method, password, err);
+                panic!("{method} password {password} is not base64 encoded, error: {err}");
             }
         }
     } else {
@@ -209,6 +374,60 @@ fn make_derived_key(_method: CipherKind, password: &str, enc_key: &mut [u8]) {
     openssl_bytes_to_key(password.as_bytes(), enc_key);
 }
 
+/// Check if method supports Extended Identity Header
+///
+/// https://github.com/Shadowsocks-NET/shadowsocks-specs/blob/main/2022-2-shadowsocks-2022-extensible-identity-headers.md
+#[cfg(feature = "aead-cipher-2022")]
+#[inline]
+pub fn method_support_eih(method: CipherKind) -> bool {
+    matches!(
+        method,
+        CipherKind::AEAD2022_BLAKE3_AES_128_GCM | CipherKind::AEAD2022_BLAKE3_AES_256_GCM
+    )
+}
+
+fn password_to_keys<P>(method: CipherKind, password: P) -> (String, Box<[u8]>, Vec<Bytes>)
+where
+    P: Into<String>,
+{
+    let password = password.into();
+
+    #[cfg(feature = "aead-cipher-2022")]
+    if method_support_eih(method) {
+        // Extensible Identity Headers
+        // iPSK1:iPSK2:iPSK3:...:uPSK
+
+        let mut identity_keys = Vec::new();
+
+        let mut split_iter = password.rsplit(':');
+
+        let upsk = split_iter.next().expect("uPSK");
+
+        let mut enc_key = vec![0u8; method.key_len()].into_boxed_slice();
+        make_derived_key(method, upsk, &mut enc_key);
+
+        for ipsk in split_iter {
+            match USER_KEY_BASE64_ENGINE.decode(ipsk) {
+                Ok(v) => {
+                    identity_keys.push(Bytes::from(v));
+                }
+                Err(err) => {
+                    panic!("iPSK {ipsk} is not base64 encoded, error: {err}");
+                }
+            }
+        }
+
+        identity_keys.reverse();
+
+        return (upsk.to_owned(), enc_key, identity_keys);
+    }
+
+    let mut enc_key = vec![0u8; method.key_len()].into_boxed_slice();
+    make_derived_key(method, &password, &mut enc_key);
+
+    (password, enc_key, Vec::new())
+}
+
 impl ServerConfig {
     /// Create a new `ServerConfig`
     pub fn new<A, P>(addr: A, password: P, method: CipherKind) -> ServerConfig
@@ -216,16 +435,15 @@ impl ServerConfig {
         A: Into<ServerAddr>,
         P: Into<String>,
     {
-        let password = password.into();
-
-        let mut enc_key = vec![0u8; method.key_len()].into_boxed_slice();
-        make_derived_key(method, &password, &mut enc_key);
+        let (password, enc_key, identity_keys) = password_to_keys(method, password);
 
         ServerConfig {
             addr: addr.into(),
             password,
             method,
             enc_key,
+            identity_keys: Arc::new(identity_keys),
+            user_manager: None,
             timeout: None,
             plugin: None,
             plugin_addr: None,
@@ -242,12 +460,12 @@ impl ServerConfig {
         P: Into<String>,
     {
         self.method = method;
-        self.password = password.into();
 
-        let mut enc_key = vec![0u8; method.key_len()].into_boxed_slice();
-        make_derived_key(method, &self.password, &mut enc_key);
+        let (password, enc_key, identity_keys) = password_to_keys(method, password);
 
+        self.password = password;
         self.enc_key = enc_key;
+        self.identity_keys = Arc::new(identity_keys);
     }
 
     /// Set plugin
@@ -278,6 +496,31 @@ impl ServerConfig {
         self.password.as_str()
     }
 
+    /// Get identity keys (Client)
+    pub fn identity_keys(&self) -> &[Bytes] {
+        &self.identity_keys
+    }
+
+    /// Clone identity keys (Client)
+    pub fn clone_identity_keys(&self) -> Arc<Vec<Bytes>> {
+        self.identity_keys.clone()
+    }
+
+    /// Set user manager, enable Server's multi-user support with EIH
+    pub fn set_user_manager(&mut self, user_manager: ServerUserManager) {
+        self.user_manager = Some(Arc::new(user_manager));
+    }
+
+    /// Get user manager (Server)
+    pub fn user_manager(&self) -> Option<&ServerUserManager> {
+        self.user_manager.as_deref()
+    }
+
+    /// Clone user manager (Server)
+    pub fn clone_user_manager(&self) -> Option<Arc<ServerUserManager>> {
+        self.user_manager.clone()
+    }
+
     /// Get method
     pub fn method(&self) -> CipherKind {
         self.method
@@ -298,9 +541,24 @@ impl ServerConfig {
         self.plugin_addr.as_ref()
     }
 
-    /// Get server's external address
-    pub fn external_addr(&self) -> &ServerAddr {
-        self.plugin_addr.as_ref().unwrap_or(&self.addr)
+    /// Get server's TCP external address
+    pub fn tcp_external_addr(&self) -> &ServerAddr {
+        if let Some(plugin) = self.plugin() {
+            if plugin.plugin_mode.enable_tcp() {
+                return self.plugin_addr.as_ref().unwrap_or(&self.addr);
+            }
+        }
+        &self.addr
+    }
+
+    /// Get server's UDP external address
+    pub fn udp_external_addr(&self) -> &ServerAddr {
+        if let Some(plugin) = self.plugin() {
+            if plugin.plugin_mode.enable_udp() {
+                return self.plugin_addr.as_ref().unwrap_or(&self.addr);
+            }
+        }
+        &self.addr
     }
 
     /// Set timeout
@@ -365,7 +623,7 @@ impl ServerConfig {
     /// ```
     pub fn to_qrcode_url(&self) -> String {
         let param = format!("{}:{}@{}", self.method(), self.password(), self.addr());
-        format!("ss://{}", encode_config(&param, URL_SAFE_NO_PAD))
+        format!("ss://{}", URL_PASSWORD_BASE64_ENGINE.encode(param))
     }
 
     /// Get [SIP002](https://github.com/shadowsocks/shadowsocks-org/issues/27) URL
@@ -374,13 +632,13 @@ impl ServerConfig {
             if #[cfg(feature = "aead-cipher-2022")] {
                 let user_info = if !self.method().is_aead_2022() {
                     let user_info = format!("{}:{}", self.method(), self.password());
-                    encode_config(&user_info, URL_SAFE_NO_PAD)
+                    URL_PASSWORD_BASE64_ENGINE.encode(&user_info)
                 } else {
                     format!("{}:{}", self.method(), percent_encoding::utf8_percent_encode(self.password(), percent_encoding::NON_ALPHANUMERIC))
                 };
             } else {
                 let mut user_info = format!("{}:{}", self.method(), self.password());
-                user_info = encode_config(&user_info, URL_SAFE_NO_PAD)
+                user_info = URL_PASSWORD_BASE64_ENGINE.encode(&user_info)
             }
         }
 
@@ -430,7 +688,7 @@ impl ServerConfig {
                 None => return Err(UrlParseError::MissingHost),
             };
 
-            let mut decoded_body = match decode_config(encoded, URL_SAFE_NO_PAD) {
+            let mut decoded_body = match URL_PASSWORD_BASE64_ENGINE.decode(encoded) {
                 Ok(b) => match String::from_utf8(b) {
                     Ok(b) => b,
                     Err(..) => return Err(UrlParseError::InvalidServerAddr),
@@ -469,7 +727,23 @@ impl ServerConfig {
                 (m, p)
             }
             None => {
-                let account = match decode_config(user_info, URL_SAFE_NO_PAD) {
+                // userinfo is not required to be percent encoded, but some implementation did.
+                // If the base64 library have padding = added to the encoded string, then it will become %3D.
+
+                let decoded_user_info = match percent_encoding::percent_decode_str(user_info).decode_utf8() {
+                    Ok(m) => m,
+                    Err(err) => {
+                        error!("failed to parse percent-encoded userinfo, err: {}", err);
+                        return Err(UrlParseError::InvalidAuthInfo);
+                    }
+                };
+
+                // reborrow to fit AsRef<[u8]>
+                let decoded_user_info: &str = &decoded_user_info;
+
+                // Some implementation, like outline,
+                // or those with Python (base64 in Python will still have '=' padding for URL safe encode)
+                let account = match URL_PASSWORD_BASE64_ENGINE.decode(decoded_user_info) {
                     Ok(account) => match String::from_utf8(account) {
                         Ok(ac) => ac,
                         Err(..) => return Err(UrlParseError::InvalidAuthInfo),
@@ -496,7 +770,7 @@ impl ServerConfig {
         };
 
         let port = parsed.port().unwrap_or(8388);
-        let addr = format!("{}:{}", host, port);
+        let addr = format!("{host}:{port}");
 
         let addr = match addr.parse::<ServerAddr>() {
             Ok(a) => a,
@@ -531,6 +805,7 @@ impl ServerConfig {
                             plugin: p.to_owned(),
                             plugin_opts: vsp.next().map(ToOwned::to_owned),
                             plugin_args: Vec::new(), // SIP002 doesn't have arguments for plugins
+                            plugin_mode: Mode::TcpOnly, // SIP002 doesn't support SIP003u
                         };
                         svrconfig.set_plugin(plugin);
                     }
@@ -670,8 +945,8 @@ impl FromStr for ServerAddr {
 impl Display for ServerAddr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            ServerAddr::SocketAddr(ref a) => write!(f, "{}", a),
-            ServerAddr::DomainName(ref d, port) => write!(f, "{}:{}", d, port),
+            ServerAddr::SocketAddr(ref a) => write!(f, "{a}"),
+            ServerAddr::DomainName(ref d, port) => write!(f, "{d}:{port}"),
         }
     }
 }
@@ -782,7 +1057,7 @@ impl Display for ManagerAddr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             ManagerAddr::SocketAddr(ref saddr) => fmt::Display::fmt(saddr, f),
-            ManagerAddr::DomainName(ref dname, port) => write!(f, "{}:{}", dname, port),
+            ManagerAddr::DomainName(ref dname, port) => write!(f, "{dname}:{port}"),
             #[cfg(unix)]
             ManagerAddr::UnixSocketAddr(ref path) => fmt::Display::fmt(&path.display(), f),
         }

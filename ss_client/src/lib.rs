@@ -3,8 +3,9 @@ use std::{
     io::Read,
     path::{Path, PathBuf},
     sync::Mutex,
-    thread,
+    thread, ffi::OsStr,
 };
+use clap::{Command, Arg, ArgAction, ValueHint};
 mod config;
 mod file;
 mod yaml;
@@ -57,30 +58,15 @@ lazy_static! {
     static ref client: Mutex<Client::Client> = Mutex::new(Client::Client::new());
 }
 
-pub fn ss_start(path: String, re_start: bool) {
-    let config = config::SSConfig::load_from_file(path.clone());
-    let acl = if config.acl.is_empty() {
-        None
-    } else {
-        Some(config.acl.as_str())
-    };
-    local::start(path.as_str(), re_start, acl, |ts| {
-        let _ = thread::spawn(move || {
-            loop {
-                let mut c = client.lock().unwrap();
-                c.isStart = true;
-                if c.canStop() {
-                    c.update();
-                    break;
-                }
-            }
-            let _ = ts.send(true);
-        });
-    });
+pub fn ss_start(path: String) {
+
+    
+    let mut app = Command::new("shadowsocks")
+        .version(shadowsocks_rust::VERSION)
+        .about("A fast tunnel proxy that helps you bypass firewalls. (https://shadowsocks.org)");
+    app = local::define_command_line_options(app, Some(path.clone()));
+    
+    let matches = app.get_matches();
+    local::main(&matches);
 }
-pub fn ss_stop() {
-    let c = client.lock().unwrap();
-    if c.isStart {
-        c.stop();
-    }
-}
+

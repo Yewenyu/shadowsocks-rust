@@ -2454,6 +2454,7 @@ dependencies = [
 name = "ss_client"
 version = "0.1.0"
 dependencies = [
+ "clap",
  "json5",
  "lazy_static",
  "serde",

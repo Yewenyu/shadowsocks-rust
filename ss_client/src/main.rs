@@ -10,7 +10,9 @@ fn main() {
     //     thread::sleep(Duration::from_millis(10000));
     //     ss_client::ss_stop();
     // });
-    ss_client::ss_start(configPath, false);
+    ss_client::ss_start(configPath);
+
+    print!("Hello, world!")
     // let newPP = newP.clone();
     // let _ = thread::spawn(move || {
     //     thread::sleep(Duration::from_millis(10000));

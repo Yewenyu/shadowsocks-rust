@@ -5,7 +5,7 @@ appenders:
     kind: console
   requests:
     kind: file
-    path: /Users/xiewenyu/Desktop/rust-project/shadowsocks-rust/ss_client/src/log.log
+    path: /Users/xiewenyu/Desktop/project/rust/shadowsocks-rust/ss_client/src/log.log
     encoder:
       pattern: "{d} - {m}{n}"
 root:

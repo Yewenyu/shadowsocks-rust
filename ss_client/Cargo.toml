@@ -9,7 +9,11 @@ edition = "2021"
 
 [dependencies]
 shadowsocks-rust = { path = "..",default-features = false,features = [
-    "local"
+    "local-http",
+    "local-tun",
+    "multi-threaded",
+    "logging",
+    "server"
     ]}
 lazy_static = "*"
 serde = { version = "1.0.134", features = ["derive"] }

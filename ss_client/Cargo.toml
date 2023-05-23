@@ -12,6 +12,7 @@ shadowsocks-rust = { path = "..",default-features = false,features = [
     "logging",
     "local-dns",
     "local-http",
+    "local-tun",
     "server",
     "manager",
     "utility",

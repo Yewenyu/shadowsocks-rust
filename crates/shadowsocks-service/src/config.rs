@@ -276,6 +276,9 @@ struct SSLocalExtConfig {
     /// Tun
     #[cfg(feature = "local-tun")]
     #[serde(skip_serializing_if = "Option::is_none")]
+    tun_device_fd: Option<i32>,
+    #[cfg(feature = "local-tun")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     tun_interface_name: Option<String>,
     #[cfg(feature = "local-tun")]
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1552,6 +1555,11 @@ impl Config {
                         }
 
                         #[cfg(feature = "local-tun")]
+                        if let Some(fd) = local.tun_device_fd {
+                            local_config.tun_device_fd = Some(fd);
+                        }
+
+                        #[cfg(feature = "local-tun")]
                         if let Some(tun_interface_name) = local.tun_interface_name {
                             local_config.tun_interface_name = Some(tun_interface_name);
                         }
@@ -2450,6 +2458,8 @@ impl fmt::Display for Config {
                                 Address::DomainNameAddress(.., port) => Some(*port),
                             },
                         },
+                        #[cfg(feature = "local-tun")]
+                        tun_device_fd: local.tun_device_fd.clone(),
                         #[cfg(feature = "local-tun")]
                         tun_interface_name: local.tun_interface_name.clone(),
                         #[cfg(feature = "local-tun")]

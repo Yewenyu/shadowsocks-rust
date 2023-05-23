@@ -377,10 +377,11 @@ impl Server {
                         builder.udp_expiry_duration(d);
                     }
                     builder.mode(local_config.mode);
-                    #[cfg(unix)]
                     if let Some(fd) = local_config.tun_device_fd {
                         builder.file_descriptor(fd);
-                    } else if let Some(ref fd_path) = local_config.tun_device_fd_from_path {
+                    } 
+                    #[cfg(unix)]
+                    if let Some(ref fd_path) = local_config.tun_device_fd_from_path {
                         use std::fs;
 
                         let _ = fs::remove_file(fd_path);

@@ -942,3 +942,403 @@ mod test {
 }
 
 
+pub fn start(path: String){
+    let (config, runtime) = {
+        let config_path_opt = matches.get_one::<PathBuf>("CONFIG").cloned().or_else(|| {
+            if !matches.contains_id("SERVER_CONFIG") {
+                match crate::config::get_default_config_path() {
+                    None => None,
+                    Some(p) => {
+                        println!("loading default config {p:?}");
+                        Some(p)
+                    }
+                }
+            } else {
+                None
+            }
+        });
+
+        let mut service_config = match config_path_opt {
+            Some(ref config_path) => match ServiceConfig::load_from_file(config_path) {
+                Ok(c) => c,
+                Err(err) => {
+                    eprintln!("loading config {config_path:?}, {err}");
+                    return crate::EXIT_CODE_LOAD_CONFIG_FAILURE.into();
+                }
+            },
+            None => ServiceConfig::default(),
+        };
+        service_config.set_options(matches);
+
+        #[cfg(feature = "logging")]
+        match service_config.log.config_path {
+            Some(ref path) => {
+                logging::init_with_file(path);
+            }
+            None => {
+                logging::init_with_config("sslocal", &service_config.log);
+            }
+        }
+
+        trace!("{:?}", service_config);
+
+        let mut config = match config_path_opt {
+            Some(cpath) => match Config::load_from_file(&cpath, ConfigType::Local) {
+                Ok(cfg) => cfg,
+                Err(err) => {
+                    eprintln!("loading config {cpath:?}, {err}");
+                    return crate::EXIT_CODE_LOAD_CONFIG_FAILURE.into();
+                }
+            },
+            None => Config::new(ConfigType::Local),
+        };
+
+        if let Some(svr_addr) = matches.get_one::<String>("SERVER_ADDR") {
+            let method = matches
+                .get_one::<String>("ENCRYPT_METHOD")
+                .map(|x| x.parse::<CipherKind>().expect("method"))
+                .expect("`method` is required");
+
+            let password = match matches.get_one::<String>("PASSWORD") {
+                Some(pwd) => read_variable_field_value(pwd).into(),
+                None => {
+                    // NOTE: svr_addr should have been checked by crate::vparser
+                    if method.is_none() {
+                        // If method doesn't need a key (none, plain), then we can leave it empty
+                        String::new()
+                    } else {
+                        match crate::password::read_server_password(svr_addr) {
+                            Ok(pwd) => pwd,
+                            Err(..) => panic!("`password` is required for server {svr_addr}"),
+                        }
+                    }
+                }
+            };
+
+            let svr_addr = svr_addr.parse::<ServerAddr>().expect("server-addr");
+            let timeout = matches.get_one::<u64>("TIMEOUT").map(|x| Duration::from_secs(*x));
+
+            let mut sc = ServerConfig::new(svr_addr, password, method);
+            if let Some(timeout) = timeout {
+                sc.set_timeout(timeout);
+            }
+
+            if let Some(p) = matches.get_one::<String>("PLUGIN").cloned() {
+                let plugin = PluginConfig {
+                    plugin: p,
+                    plugin_opts: matches.get_one::<String>("PLUGIN_OPT").cloned(),
+                    plugin_args: Vec::new(),
+                    plugin_mode: Mode::TcpOnly,
+                };
+
+                sc.set_plugin(plugin);
+            }
+
+            config.server.push(ServerInstanceConfig::with_server_config(sc));
+        }
+
+        if let Some(svr_addr) = matches.get_one::<ServerConfig>("SERVER_URL").cloned() {
+            config.server.push(ServerInstanceConfig::with_server_config(svr_addr));
+        }
+
+        #[cfg(feature = "local-flow-stat")]
+        {
+            use shadowsocks_service::config::LocalFlowStatAddress;
+            use std::net::SocketAddr;
+
+            #[cfg(unix)]
+            if let Some(stat_path) = matches.get_one::<String>("STAT_PATH") {
+                config.local_stat_addr = Some(LocalFlowStatAddress::UnixStreamPath(From::from(stat_path)));
+            }
+
+            if let Some(stat_addr) = matches.get_one::<SocketAddr>("STAT_ADDR").cloned() {
+                config.local_stat_addr = Some(LocalFlowStatAddress::TcpStreamAddr(stat_addr));
+            }
+        }
+
+        #[cfg(target_os = "android")]
+        if matches.get_flag("VPN_MODE") {
+            // A socket `protect_path` in CWD
+            // Same as shadowsocks-libev's android.c
+            config.outbound_vpn_protect_path = Some(From::from("protect_path"));
+        }
+
+        if matches.get_raw("LOCAL_ADDR").is_some() || matches.get_raw("PROTOCOL").is_some() {
+            let protocol = match matches.get_one::<String>("PROTOCOL").map(|s| s.as_str()) {
+                Some("socks") => ProtocolType::Socks,
+                #[cfg(feature = "local-http")]
+                Some("http") => ProtocolType::Http,
+                #[cfg(feature = "local-tunnel")]
+                Some("tunnel") => ProtocolType::Tunnel,
+                #[cfg(feature = "local-redir")]
+                Some("redir") => ProtocolType::Redir,
+                #[cfg(feature = "local-dns")]
+                Some("dns") => ProtocolType::Dns,
+                #[cfg(feature = "local-tun")]
+                Some("tun") => ProtocolType::Tun,
+                Some(p) => panic!("not supported `protocol` \"{p}\""),
+                None => ProtocolType::Socks,
+            };
+
+            let mut local_config = LocalConfig::new(protocol);
+            match matches.get_one::<ServerAddr>("LOCAL_ADDR").cloned() {
+                Some(local_addr) => local_config.addr = Some(local_addr),
+                None => {
+                    #[cfg(feature = "local-tun")]
+                    if protocol == ProtocolType::Tun {
+                        // `tun` protocol doesn't need --local-addr
+                    } else {
+                        panic!("`local-addr` is required for protocol {}", protocol.as_str());
+                    }
+                }
+            }
+
+            if let Some(udp_bind_addr) = matches.get_one::<ServerAddr>("UDP_BIND_ADDR").cloned() {
+                local_config.udp_addr = Some(udp_bind_addr);
+            }
+
+            #[cfg(feature = "local-tunnel")]
+            if let Some(addr) = matches.get_one::<Address>("FORWARD_ADDR").cloned() {
+                local_config.forward_addr = Some(addr);
+            }
+
+            #[cfg(feature = "local-redir")]
+            {
+                if RedirType::tcp_default() != RedirType::NotSupported {
+                    if let Some(tcp_redir) = matches.get_one::<String>("TCP_REDIR") {
+                        local_config.tcp_redir = tcp_redir.parse::<RedirType>().expect("tcp-redir");
+                    }
+                }
+
+                if RedirType::udp_default() != RedirType::NotSupported {
+                    if let Some(udp_redir) = matches.get_one::<String>("UDP_REDIR") {
+                        local_config.udp_redir = udp_redir.parse::<RedirType>().expect("udp-redir");
+                    }
+                }
+            }
+
+            #[cfg(feature = "local-dns")]
+            {
+                use shadowsocks_service::local::dns::NameServerAddr;
+
+                use self::local_value_parser::RemoteDnsAddress;
+
+                if let Some(addr) = matches.get_one::<NameServerAddr>("LOCAL_DNS_ADDR").cloned() {
+                    local_config.local_dns_addr = Some(addr);
+                }
+
+                if let Some(addr) = matches.get_one::<RemoteDnsAddress>("REMOTE_DNS_ADDR").cloned() {
+                    local_config.remote_dns_addr = Some(addr.0);
+                }
+            }
+
+            #[cfg(all(feature = "local-dns", target_os = "android"))]
+            if protocol != ProtocolType::Dns {
+                // Start a DNS local server binding to DNS_LOCAL_ADDR
+                //
+                // This is a special route only for shadowsocks-android
+                if let Some(addr) = matches.get_one::<ServerAddr>("DNS_LOCAL_ADDR").cloned() {
+                    let mut local_dns_config = LocalConfig::new_with_addr(addr, ProtocolType::Dns);
+
+                    // The `local_dns_addr` and `remote_dns_addr` are for this DNS server (for compatibility)
+                    local_dns_config.local_dns_addr = local_config.local_dns_addr.take();
+                    local_dns_config.remote_dns_addr = local_config.remote_dns_addr.take();
+
+                    config
+                        .local
+                        .push(LocalInstanceConfig::with_local_config(local_dns_config));
+                }
+            }
+
+            #[cfg(feature = "local-tun")]
+            {
+                use ipnet::IpNet;
+
+                if let Some(tun_address) = matches.get_one::<IpNet>("TUN_INTERFACE_ADDRESS").cloned() {
+                    local_config.tun_interface_address = Some(tun_address);
+                }
+                if let Some(tun_address) = matches.get_one::<IpNet>("TUN_INTERFACE_DESTINATION").cloned() {
+                    local_config.tun_interface_destination = Some(tun_address);
+                }
+                if let Some(tun_name) = matches.get_one::<String>("TUN_INTERFACE_NAME").cloned() {
+                    local_config.tun_interface_name = Some(tun_name);
+                }
+
+                #[cfg(unix)]
+                if let Some(fd_path) = matches.get_one::<PathBuf>("TUN_DEVICE_FD_FROM_PATH").cloned() {
+                    local_config.tun_device_fd_from_path = Some(fd_path);
+                }
+            }
+
+            if matches.get_flag("UDP_ONLY") {
+                local_config.mode = Mode::UdpOnly;
+            }
+
+            if matches.get_flag("TCP_AND_UDP") {
+                local_config.mode = Mode::TcpAndUdp;
+            }
+
+            config.local.push(LocalInstanceConfig::with_local_config(local_config));
+        }
+
+        if matches.get_flag("TCP_NO_DELAY") {
+            config.no_delay = true;
+        }
+
+        if matches.get_flag("TCP_FAST_OPEN") {
+            config.fast_open = true;
+        }
+
+        if let Some(keep_alive) = matches.get_one::<u64>("TCP_KEEP_ALIVE") {
+            config.keep_alive = Some(Duration::from_secs(*keep_alive));
+        }
+
+        if matches.get_flag("TCP_MULTIPATH") {
+            config.mptcp = true;
+        }
+
+        #[cfg(any(target_os = "linux", target_os = "android"))]
+        if let Some(mark) = matches.get_one::<u32>("OUTBOUND_FWMARK") {
+            config.outbound_fwmark = Some(*mark);
+        }
+
+        #[cfg(target_os = "freebsd")]
+        if let Some(user_cookie) = matches.get_one::<u32>("OUTBOUND_USER_COOKIE") {
+            config.outbound_user_cookie = Some(*user_cookie);
+        }
+
+        if let Some(iface) = matches.get_one::<String>("OUTBOUND_BIND_INTERFACE").cloned() {
+            config.outbound_bind_interface = Some(iface);
+        }
+
+        #[cfg(all(unix, not(target_os = "android")))]
+        match matches.get_one::<u64>("NOFILE") {
+            Some(nofile) => config.nofile = Some(*nofile),
+            None => {
+                if config.nofile.is_none() {
+                    crate::sys::adjust_nofile();
+                }
+            }
+        }
+
+        if let Some(acl_file) = matches.get_one::<String>("ACL") {
+            let acl = match AccessControl::load_from_file(acl_file) {
+                Ok(acl) => acl,
+                Err(err) => {
+                    eprintln!("loading ACL \"{acl_file}\", {err}");
+                    return crate::EXIT_CODE_LOAD_ACL_FAILURE.into();
+                }
+            };
+            config.acl = Some(acl);
+        }
+
+        if let Some(dns) = matches.get_one::<String>("DNS") {
+            config.set_dns_formatted(dns).expect("dns");
+        }
+
+        if matches.get_flag("IPV6_FIRST") {
+            config.ipv6_first = true;
+        }
+
+        if let Some(udp_timeout) = matches.get_one::<u64>("UDP_TIMEOUT") {
+            config.udp_timeout = Some(Duration::from_secs(*udp_timeout));
+        }
+
+        if let Some(udp_max_assoc) = matches.get_one::<usize>("UDP_MAX_ASSOCIATIONS") {
+            config.udp_max_associations = Some(*udp_max_assoc);
+        }
+
+        if let Some(bs) = matches.get_one::<u32>("INBOUND_SEND_BUFFER_SIZE") {
+            config.inbound_send_buffer_size = Some(*bs);
+        }
+        if let Some(bs) = matches.get_one::<u32>("INBOUND_RECV_BUFFER_SIZE") {
+            config.inbound_recv_buffer_size = Some(*bs);
+        }
+        if let Some(bs) = matches.get_one::<u32>("OUTBOUND_SEND_BUFFER_SIZE") {
+            config.outbound_send_buffer_size = Some(*bs);
+        }
+        if let Some(bs) = matches.get_one::<u32>("OUTBOUND_RECV_BUFFER_SIZE") {
+            config.outbound_recv_buffer_size = Some(*bs);
+        }
+
+        if let Some(bind_addr) = matches.get_one::<IpAddr>("OUTBOUND_BIND_ADDR") {
+            config.outbound_bind_addr = Some(*bind_addr);
+        }
+
+        // DONE READING options
+
+        if config.local.is_empty() {
+            eprintln!(
+                "missing `local_address`, consider specifying it by --local-addr command line option, \
+                    or \"local_address\" and \"local_port\" in configuration file"
+            );
+            return crate::EXIT_CODE_INSUFFICIENT_PARAMS.into();
+        }
+
+        if let Err(err) = config.check_integrity() {
+            eprintln!("config integrity check failed, {err}");
+            return crate::EXIT_CODE_LOAD_CONFIG_FAILURE.into();
+        }
+
+        #[cfg(unix)]
+        if matches.get_flag("DAEMONIZE") || matches.get_raw("DAEMONIZE_PID_PATH").is_some() {
+            use crate::daemonize;
+            daemonize::daemonize(matches.get_one::<PathBuf>("DAEMONIZE_PID_PATH"));
+        }
+
+        #[cfg(unix)]
+        if let Some(uname) = matches.get_one::<String>("USER") {
+            crate::sys::run_as_user(uname);
+        }
+
+        info!("shadowsocks local {} build {}", crate::VERSION, crate::BUILD_TIME);
+
+        let mut builder = match service_config.runtime.mode {
+            RuntimeMode::SingleThread => Builder::new_current_thread(),
+            #[cfg(feature = "multi-threaded")]
+            RuntimeMode::MultiThread => {
+                let mut builder = Builder::new_multi_thread();
+                if let Some(worker_threads) = service_config.runtime.worker_count {
+                    builder.worker_threads(worker_threads);
+                }
+
+                builder
+            }
+        };
+
+        let runtime = builder.enable_all().build().expect("create tokio Runtime");
+
+        (config, runtime)
+    };
+
+    runtime.block_on(async move {
+        let config_path = config.config_path.clone();
+
+        let instance = Server::new(config).await.expect("create local");
+
+        if let Some(config_path) = config_path {
+            launch_reload_server_task(config_path, instance.server_balancer().clone());
+        }
+
+        let abort_signal = monitor::create_signal_monitor();
+        let server = instance.run();
+
+        tokio::pin!(abort_signal);
+        tokio::pin!(server);
+
+        match future::select(server, abort_signal).await {
+            // Server future resolved without an error. This should never happen.
+            Either::Left((Ok(..), ..)) => {
+                eprintln!("server exited unexpectedly");
+                crate::EXIT_CODE_SERVER_EXIT_UNEXPECTEDLY.into()
+            }
+            // Server future resolved with error, which are listener errors in most cases
+            Either::Left((Err(err), ..)) => {
+                eprintln!("server aborted with {err}");
+                crate::EXIT_CODE_SERVER_ABORTED.into()
+            }
+            // The abort signal future resolved. Means we should just exit.
+            Either::Right(_) => ExitCode::SUCCESS,
+        }
+    })
+}

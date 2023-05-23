@@ -61,12 +61,5 @@ lazy_static! {
 pub fn ss_start(path: String) {
 
     
-    let mut app = Command::new("shadowsocks")
-        .version(shadowsocks_rust::VERSION)
-        .about("A fast tunnel proxy that helps you bypass firewalls. (https://shadowsocks.org)");
-    app = local::define_command_line_options(app, Some(path.clone()));
-    
-    let matches = app.get_matches();
-    local::main(&matches);
 }
 

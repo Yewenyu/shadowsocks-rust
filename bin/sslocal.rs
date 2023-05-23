@@ -13,7 +13,7 @@ fn main() -> ExitCode {
     let mut app = Command::new("shadowsocks")
         .version(shadowsocks_rust::VERSION)
         .about("A fast tunnel proxy that helps you bypass firewalls. (https://shadowsocks.org)");
-    app = local::define_command_line_options(app,None);
+    app = local::define_command_line_options(app);
 
     let matches = app.get_matches();
     local::main(&matches)

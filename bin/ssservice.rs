@@ -21,7 +21,7 @@ fn main() -> ExitCode {
     if let Some(program_path) = env::args().next() {
         if let Some(program_name) = Path::new(&program_path).file_name() {
             match program_name.to_str() {
-                Some("sslocal") => return local::main(&local::define_command_line_options(app,None).get_matches()),
+                Some("sslocal") => return local::main(&local::define_command_line_options(app).get_matches()),
                 Some("ssserver") => return server::main(&server::define_command_line_options(app).get_matches()),
                 Some("ssmanager") => return manager::main(&manager::define_command_line_options(app).get_matches()),
                 _ => {}
@@ -31,7 +31,7 @@ fn main() -> ExitCode {
 
     let matches = app
         .subcommand_required(true)
-        .subcommand(local::define_command_line_options(Command::new("local"),None).about("Shadowsocks Local service"))
+        .subcommand(local::define_command_line_options(Command::new("local")).about("Shadowsocks Local service"))
         .subcommand(server::define_command_line_options(Command::new("server")).about("Shadowsocks Server service"))
         .subcommand(
             manager::define_command_line_options(Command::new("manager")).about("Shadowsocks Server Manager service"),

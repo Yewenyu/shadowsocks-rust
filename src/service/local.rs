@@ -77,34 +77,18 @@ mod local_value_parser {
 }
 
 /// Defines command line options
-pub fn define_command_line_options(mut app: Command,default_config_path:Option<String>) -> Command {
-    app = if let Some(path) = default_config_path {
-        let path_str:&'static str = Box::leak(path.into_boxed_str());
-        app.arg(
-            Arg::new("CONFIG")
-                .short('c')
-                .long("config")
-                .num_args(1)
-                .action(ArgAction::Set)
-                .value_parser(clap::value_parser!(PathBuf))
-                .value_hint(ValueHint::FilePath)
-                .default_value(path_str)
-                .help("Shadowsocks configuration file (https://shadowsocks.org/guide/configs.html)"),
-        )
-    }else{
-        app.arg(
-            Arg::new("CONFIG")
-                .short('c')
-                .long("config")
-                .num_args(1)
-                .action(ArgAction::Set)
-                .value_parser(clap::value_parser!(PathBuf))
-                .value_hint(ValueHint::FilePath)
-                .help("Shadowsocks configuration file (https://shadowsocks.org/guide/configs.html)"),
-        )
-    };
-    app = app
-    .arg(
+pub fn define_command_line_options(mut app: Command) -> Command {
+    
+    app = app.arg(
+        Arg::new("CONFIG")
+            .short('c')
+            .long("config")
+            .num_args(1)
+            .action(ArgAction::Set)
+            .value_parser(clap::value_parser!(PathBuf))
+            .value_hint(ValueHint::FilePath)
+            .help("Shadowsocks configuration file (https://shadowsocks.org/guide/configs.html)"),
+    ).arg(
         Arg::new("LOCAL_ADDR")
             .short('b')
             .long("local-addr")
@@ -952,7 +936,9 @@ mod test {
         let mut app = Command::new("shadowsocks")
             .version(crate::VERSION)
             .about("A fast tunnel proxy that helps you bypass firewalls. (https://shadowsocks.org)");
-        app = super::define_command_line_options(app,None);
+        app = super::define_command_line_options(app);
         app.debug_assert();
     }
 }
+
+

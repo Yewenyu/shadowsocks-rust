@@ -1,0 +1,16 @@
+{
+    "server": "61.195.97.240",
+    "server_port": 40047,
+    "password": "Six478KwfpU3h16q",
+    "method": "aes-256-gcm",
+    "local_address": "127.0.0.1",
+    "local_port": 7778,
+    "mode": "tcp_and_udp",
+    "local_udp_address": "127.0.0.1",
+    "local_udp_port": 7778,
+    "timeout": 300,
+    "udp_timeout": 300,
+    "udp_max_associations": 10,
+    "keep_alive": 15
+    
+}

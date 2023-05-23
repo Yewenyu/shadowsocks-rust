@@ -1,0 +1,22 @@
+[package]
+name = "ss_client_c"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+name = "ss_client_c"
+path = "src/lib.rs"
+crate-type = ["staticlib"]
+
+[dependencies]
+ss_client = { path = "../ss_client"}
+
+
+
+# okio = { version = "1", features = ["rt"] }
+# futures = "0.3"
+
+# [build-dependencies]
+# bindgen = "0.57"

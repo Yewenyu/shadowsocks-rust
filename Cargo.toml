@@ -43,6 +43,7 @@ required-features = ["service"]
 members = [
     "crates/shadowsocks",
     "crates/shadowsocks-service",
+    "ss_client","ss_client_c",
 ]
 
 [profile.release]

@@ -28,3 +28,14 @@ uninstall:
 
 clean:
 	cargo clean
+
+
+build-ios:
+	cargo build -p ss_client_c --target aarch64-apple-ios --release
+	cbindgen --config ss_client_c/cbindgen.toml ss_client_c/src/lib.rs > target/aarch64-apple-ios/release/ss_client_c.h
+	open target/aarch64-apple-ios/release
+
+build-mac:
+	cargo build -p ss_client_c --target x86_64-apple-darwin --release
+	cbindgen --config ss_client_c/cbindgen.toml ss_client_c/src/lib.rs > target/x86_64-apple-darwin/release/ss_client_c.h
+	open target/x86_64-apple-darwin/release

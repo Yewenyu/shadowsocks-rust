@@ -60,13 +60,14 @@ lazy_static! {
 
 pub fn ss_start(path: String) {
 
+    print!("ss_start");
+    // let mut app = Command::new("shadowsocks")
+        // .version(shadowsocks_rust::VERSION)
+        // .about("A fast tunnel proxy that helps you bypass firewalls. (https://shadowsocks.org)");
+    // app = local::define_command_line_options(app,Some(path));
     
-    let mut app = Command::new("shadowsocks")
-        .version(shadowsocks_rust::VERSION)
-        .about("A fast tunnel proxy that helps you bypass firewalls. (https://shadowsocks.org)");
-    app = local::define_command_line_options(app, Some(path.clone()));
-    
-    let matches = app.get_matches();
-    local::main(&matches);
+    // let matches = app.get_matches();
+    return;
+    // local::main(&matches);
 }
 

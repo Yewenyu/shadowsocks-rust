@@ -18,5 +18,5 @@ ss_client = { path = "../ss_client"}
 # okio = { version = "1", features = ["rt"] }
 # futures = "0.3"
 
-# [build-dependencies]
-# bindgen = "0.57"
+[build-dependencies]
+bindgen = "0.66.1"

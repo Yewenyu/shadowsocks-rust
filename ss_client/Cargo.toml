@@ -10,7 +10,6 @@ edition = "2021"
 [dependencies]
 shadowsocks-rust = { path = "..",default-features = false,features = [
     "local-http",
-    "local-tun",
     "multi-threaded",
     "logging",
     "server"

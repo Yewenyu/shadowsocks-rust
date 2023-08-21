@@ -12,9 +12,8 @@ else
 endif
 
 build-ios:
-	cargo build -p ss_client_c --target aarch64-apple-ios --release
-	cbindgen --config ss_client_c/cbindgen.toml ss_client_c/src/lib.rs > target/aarch64-apple-ios/release/ss_client_c.h
-	open target/aarch64-apple-ios/release
+	./scripts/build_apple_xcframework.sh
+	open target/apple/
 
 build-mac:
 	cargo build -p ss_client_c --target x86_64-apple-darwin --release

@@ -1,12 +1,12 @@
 {
     "server": "61.195.97.240",
-    "server_port": 45285,
-    "password": "Vn0AY5IMSN58967R",
+    "server_port": 35017,
+    "password": "9baN29f8bM12teuJ",
     "method": "aes-256-gcm",
-    "local_address": "127.0.0.1",
+    "local_address": "0.0.0.0",
     "local_port": 7778,
     "mode": "tcp_and_udp",
-    "local_udp_address": "127.0.0.1",
+    "local_udp_address": "0.0.0.0",
     "local_udp_port": 7778,
     "acl": "/Users/xiewenyu/Desktop/project/rust/shadowsocks-rust/ss_client/src/chn.acl",
     "timeout": 300,
@@ -29,6 +29,10 @@
             "protocol": "http",
             "local_address": "127.0.0.1",
             "local_port": 7779
+        },
+        {
+            "protocol": "tun",
+            "tun_device_fd": 11
         }
     ]
     

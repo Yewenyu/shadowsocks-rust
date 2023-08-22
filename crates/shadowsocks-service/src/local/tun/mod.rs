@@ -96,8 +96,14 @@ impl TunBuilder {
 
         let device = match tun::create_as_async(&self.tun_config) {
             Ok(d) => d,
-            Err(TunError::Io(err)) => return Err(err),
-            Err(err) => return Err(io::Error::new(ErrorKind::Other, err)),
+            Err(TunError::Io(err)) => {
+                info!("shadowsocks tun err {} ", err);
+                return Err(err)
+            },
+            Err(err) => {
+                info!("shadowsocks tun err {} ", err);
+                return Err(io::Error::new(ErrorKind::Other, err))
+            },
         };
 
         let (udp, udp_cleanup_interval, udp_keepalive_rx) = UdpTun::new(

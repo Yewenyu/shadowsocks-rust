@@ -151,7 +151,7 @@ impl Tun {
             "shadowsocks tun device {}, mode {}",
             self.device
                 .get_ref()
-                .name(),
+                .name().unwrap(),
             self.mode,
         );
 
@@ -400,7 +400,7 @@ impl Tun1 {
 
         info!(
             "shadowsocks tun device {}, mode {}",
-            self.device.get_ref().name(),
+            self.device.get_ref().name().unwrap(),
             self.mode,
         );
 

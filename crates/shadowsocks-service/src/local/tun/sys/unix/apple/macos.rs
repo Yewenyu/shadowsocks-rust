@@ -75,7 +75,7 @@ pub async fn set_route_configuration(device: &TunDevice) -> io::Result<()> {
         }
     };
 
-    let tun_name = device.name();
+    let tun_name = device.name().unwrap();
 
     // routing packets that saddr & daddr are in the subnet of the Tun interface
     //

@@ -37,7 +37,7 @@ use self::http::{Http, HttpBuilder};
 use self::redir::{Redir, RedirBuilder};
 use self::socks::{Socks, SocksBuilder};
 #[cfg(feature = "local-tun")]
-use self::tun::{Tun, TunBuilder};
+use self::tun::{Tun1, TunBuilder};
 #[cfg(feature = "local-tunnel")]
 use self::tunnel::{Tunnel, TunnelBuilder};
 
@@ -92,7 +92,7 @@ pub struct Server {
     #[cfg(feature = "local-http")]
     http_servers: Vec<Http>,
     #[cfg(feature = "local-tun")]
-    tun_servers: Vec<Tun>,
+    tun_servers: Vec<Tun1>,
     #[cfg(feature = "local-dns")]
     dns_servers: Vec<Dns>,
     #[cfg(feature = "local-redir")]
@@ -555,7 +555,7 @@ impl Server {
 
     /// Get Tun server instances
     #[cfg(feature = "local-tun")]
-    pub fn tun_servers(&self) -> &[Tun] {
+    pub fn tun_servers(&self) -> &[Tun1] {
         &self.tun_servers
     }
 

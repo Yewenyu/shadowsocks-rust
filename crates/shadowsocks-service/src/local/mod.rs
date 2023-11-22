@@ -279,6 +279,15 @@ impl Server {
                         server_builder.set_udp_bind_addr(b.clone());
                     }
 
+                    #[cfg(target_os = "macos")]
+                    if let Some(n) = local_config.launchd_tcp_socket_name {
+                        server_builder.set_launchd_tcp_socket_name(n);
+                    }
+                    #[cfg(target_os = "macos")]
+                    if let Some(n) = local_config.launchd_udp_socket_name {
+                        server_builder.set_launchd_udp_socket_name(n);
+                    }
+
                     let server = server_builder.build().await?;
                     local_server.socks_servers.push(server);
                 }
@@ -305,6 +314,15 @@ impl Server {
                         server_builder.set_udp_bind_addr(udp_addr);
                     }
 
+                    #[cfg(target_os = "macos")]
+                    if let Some(n) = local_config.launchd_tcp_socket_name {
+                        server_builder.set_launchd_tcp_socket_name(n);
+                    }
+                    #[cfg(target_os = "macos")]
+                    if let Some(n) = local_config.launchd_udp_socket_name {
+                        server_builder.set_launchd_udp_socket_name(n);
+                    }
+
                     let server = server_builder.build().await?;
                     local_server.tunnel_servers.push(server);
                 }
@@ -315,7 +333,14 @@ impl Server {
                         None => return Err(io::Error::new(ErrorKind::Other, "http requires local address")),
                     };
 
-                    let builder = HttpBuilder::with_context(context.clone(), client_addr, balancer);
+                    #[allow(unused_mut)]
+                    let mut builder = HttpBuilder::with_context(context.clone(), client_addr, balancer);
+
+                    #[cfg(target_os = "macos")]
+                    if let Some(n) = local_config.launchd_tcp_socket_name {
+                        builder.set_launchd_tcp_socket_name(n);
+                    }
+
                     let server = builder.build().await?;
                     local_server.http_servers.push(server);
                 }
@@ -353,6 +378,7 @@ impl Server {
                     let mut server_builder = {
                         let local_addr = local_config.local_dns_addr.expect("missing local_dns_addr");
                         let remote_addr = local_config.remote_dns_addr.expect("missing remote_dns_addr");
+                        let client_cache_size = local_config.client_cache_size.unwrap_or(5);
 
                         DnsBuilder::with_context(
                             context.clone(),
@@ -360,18 +386,25 @@ impl Server {
                             local_addr.clone(),
                             remote_addr.clone(),
                             balancer,
+                            client_cache_size,
                         )
                     };
                     server_builder.set_mode(local_config.mode);
+
+                    #[cfg(target_os = "macos")]
+                    if let Some(n) = local_config.launchd_tcp_socket_name {
+                        server_builder.set_launchd_tcp_socket_name(n);
+                    }
+                    #[cfg(target_os = "macos")]
+                    if let Some(n) = local_config.launchd_udp_socket_name {
+                        server_builder.set_launchd_udp_socket_name(n);
+                    }
 
                     let server = server_builder.build().await?;
                     local_server.dns_servers.push(server);
                 }
                 #[cfg(feature = "local-tun")]
                 ProtocolType::Tun => {
-                    use log::info;
-                    use shadowsocks::net::UnixListener;
-
                     let mut builder = TunBuilder::new(context.clone(), balancer);
                     if let Some(address) = local_config.tun_interface_address {
                         builder.address(address);
@@ -395,6 +428,9 @@ impl Server {
                     #[cfg(unix)]
                     if let Some(ref fd_path) = local_config.tun_device_fd_from_path {
                         use std::fs;
+
+                        use log::info;
+                        use shadowsocks::net::UnixListener;
 
                         let _ = fs::remove_file(fd_path);
 

@@ -58,6 +58,8 @@ use std::{
 };
 
 use cfg_if::cfg_if;
+#[cfg(feature = "hickory-dns")]
+use hickory_resolver::config::{NameServerConfig, Protocol, ResolverConfig};
 #[cfg(feature = "local-tun")]
 use ipnet::IpNet;
 use log::warn;
@@ -78,8 +80,6 @@ use shadowsocks::{
     crypto::CipherKind,
     plugin::PluginConfig,
 };
-#[cfg(feature = "trust-dns")]
-use trust_dns_resolver::config::{NameServerConfig, Protocol, ResolverConfig};
 
 use crate::acl::AccessControl;
 #[cfg(feature = "local-dns")]
@@ -91,8 +91,8 @@ use crate::local::socks::config::Socks5AuthConfig;
 #[serde(untagged)]
 enum SSDnsConfig {
     Simple(String),
-    #[cfg(feature = "trust-dns")]
-    TrustDns(ResolverConfig),
+    #[cfg(feature = "hickory-dns")]
+    HickoryDns(ResolverConfig),
 }
 
 #[derive(Serialize, Deserialize, Debug, Default)]
@@ -240,6 +240,14 @@ struct SSLocalExtConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     protocol: Option<String>,
 
+    /// macOS launch activate socket
+    #[cfg(target_os = "macos")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    launchd_udp_socket_name: Option<String>,
+    #[cfg(target_os = "macos")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    launchd_tcp_socket_name: Option<String>,
+
     /// TCP Transparent Proxy type
     #[cfg(feature = "local-redir")]
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -267,6 +275,9 @@ struct SSLocalExtConfig {
     #[cfg(feature = "local-dns")]
     #[serde(skip_serializing_if = "Option::is_none")]
     remote_dns_port: Option<u16>,
+    #[cfg(feature = "local-dns")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    client_cache_size: Option<usize>,
 
     /// Tunnel
     #[cfg(feature = "local-tunnel")]
@@ -863,6 +874,11 @@ pub struct LocalConfig {
     /// Sending DNS query through proxy to this address
     #[cfg(feature = "local-dns")]
     pub remote_dns_addr: Option<Address>,
+    // client cache size
+    // if a lot of `create connection` observed in log,
+    // increase the size
+    #[cfg(feature = "local-dns")]
+    pub client_cache_size: Option<usize>,
 
     /// Tun interface's name
     ///
@@ -883,6 +899,43 @@ pub struct LocalConfig {
     #[cfg(all(feature = "local-tun", unix))]
     pub tun_device_fd_from_path: Option<PathBuf>,
 
+    /// macOS launchd socket for TCP listener
+    ///
+    /// <https://developer.apple.com/documentation/xpc/1505523-launch_activate_socket>
+    /// <https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPSystemStartup/Chapters/CreatingLaunchdJobs.html>
+    ///
+    /// ```plist
+    /// <key>Sockets</key>
+    /// <dict>
+    ///     <key>{launchd_tcp_socket_name}</key>
+    ///     <dict>
+    ///         <key>SockType</key>
+    ///         <string>stream</string>
+    ///         ... other keys ...
+    ///     </dict>
+    /// </dict>
+    /// ```
+    #[cfg(target_os = "macos")]
+    pub launchd_tcp_socket_name: Option<String>,
+    /// macOS launchd socket for UDP listener
+    ///
+    /// <https://developer.apple.com/documentation/xpc/1505523-launch_activate_socket>
+    /// <https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPSystemStartup/Chapters/CreatingLaunchdJobs.html>
+    ///
+    /// ```plist
+    /// <key>Sockets</key>
+    /// <dict>
+    ///     <key>{launchd_udp_socket_name}</key>
+    ///     <dict>
+    ///         <key>SockType</key>
+    ///         <string>dgram</string>
+    ///         ... other keys ...
+    ///     </dict>
+    /// </dict>
+    /// ```
+    #[cfg(target_os = "macos")]
+    pub launchd_udp_socket_name: Option<String>,
+
     /// Set `IPV6_V6ONLY` for listener socket
     pub ipv6_only: bool,
 
@@ -894,12 +947,20 @@ pub struct LocalConfig {
 impl LocalConfig {
     /// Create a new `LocalConfig`
     pub fn new(protocol: ProtocolType) -> LocalConfig {
+        // DNS server runs in `TcpAndUdp` mode by default to maintain backwards compatibility
+        // see https://github.com/shadowsocks/shadowsocks-rust/issues/1281
+        let mode = match protocol {
+            #[cfg(feature = "local-dns")]
+            ProtocolType::Dns => Mode::TcpAndUdp,
+            _ => Mode::TcpOnly,
+        };
+
         LocalConfig {
             addr: None,
 
             protocol,
 
-            mode: Mode::TcpOnly,
+            mode,
             udp_addr: None,
 
             #[cfg(feature = "local-tunnel")]
@@ -914,6 +975,8 @@ impl LocalConfig {
             local_dns_addr: None,
             #[cfg(feature = "local-dns")]
             remote_dns_addr: None,
+            #[cfg(feature = "local-dns")]
+            client_cache_size: None,
 
             #[cfg(feature = "local-tun")]
             tun_interface_name: None,
@@ -925,6 +988,11 @@ impl LocalConfig {
             tun_device_fd: None,
             #[cfg(all(feature = "local-tun", unix))]
             tun_device_fd_from_path: None,
+
+            #[cfg(target_os = "macos")]
+            launchd_tcp_socket_name: None,
+            #[cfg(target_os = "macos")]
+            launchd_udp_socket_name: None,
 
             ipv6_only: false,
 
@@ -1016,8 +1084,8 @@ impl LocalConfig {
 pub enum DnsConfig {
     #[default]
     System,
-    #[cfg(feature = "trust-dns")]
-    TrustDns(ResolverConfig),
+    #[cfg(feature = "hickory-dns")]
+    HickoryDns(ResolverConfig),
     #[cfg(feature = "local-dns")]
     LocalDns(NameServerAddr),
 }
@@ -1450,6 +1518,12 @@ impl Config {
                             local_config.udp_addr = Some(local_udp_addr);
                         }
 
+                        #[cfg(target_os = "macos")]
+                        {
+                            local_config.launchd_tcp_socket_name = local.launchd_tcp_socket_name;
+                            local_config.launchd_udp_socket_name = local.launchd_udp_socket_name;
+                        }
+
                         match local.mode {
                             Some(mode) => match mode.parse::<Mode>() {
                                 Ok(mode) => local_config.mode = mode,
@@ -1459,7 +1533,15 @@ impl Config {
                                 }
                             },
                             None => {
-                                local_config.mode = global_mode;
+                                // DNS server runs in `TcpAndUdp` mode by default to maintain backwards compatibility
+                                // see https://github.com/shadowsocks/shadowsocks-rust/issues/1281
+                                let mode = match protocol {
+                                    #[cfg(feature = "local-dns")]
+                                    ProtocolType::Dns => Mode::TcpAndUdp,
+                                    _ => global_mode,
+                                };
+
+                                local_config.mode = mode;
                             }
                         }
 
@@ -1522,6 +1604,11 @@ impl Config {
                                     return Err(err);
                                 }
                             }
+                        }
+
+                        #[cfg(feature = "local-dns")]
+                        if let Some(client_cache_size) = local.client_cache_size {
+                            local_config.client_cache_size = Some(client_cache_size);
                         }
 
                         #[cfg(feature = "local-dns")]
@@ -1944,8 +2031,8 @@ impl Config {
         {
             match config.dns {
                 Some(SSDnsConfig::Simple(ds)) => nconfig.set_dns_formatted(&ds)?,
-                #[cfg(feature = "trust-dns")]
-                Some(SSDnsConfig::TrustDns(c)) => nconfig.dns = DnsConfig::TrustDns(c),
+                #[cfg(feature = "hickory-dns")]
+                Some(SSDnsConfig::HickoryDns(c)) => nconfig.dns = DnsConfig::HickoryDns(c),
                 None => nconfig.dns = DnsConfig::System,
             }
             nconfig.dns_cache_size = config.dns_cache_size;
@@ -2068,22 +2155,37 @@ impl Config {
         self.dns = match dns {
             "system" => DnsConfig::System,
 
-            #[cfg(feature = "trust-dns")]
-            "google" => DnsConfig::TrustDns(ResolverConfig::google()),
+            #[cfg(feature = "hickory-dns")]
+            "google" => DnsConfig::HickoryDns(ResolverConfig::google()),
+            #[cfg(all(
+                feature = "hickory-dns",
+                any(feature = "dns-over-tls", feature = "dns-over-native-tls")
+            ))]
+            "google_tls" => DnsConfig::HickoryDns(ResolverConfig::google_tls()),
+            #[cfg(all(feature = "hickory-dns", feature = "dns-over-https"))]
+            "google_https" => DnsConfig::HickoryDns(ResolverConfig::google_https()),
+            #[cfg(all(feature = "hickory-dns", feature = "dns-over-h3"))]
+            "google_h3" => DnsConfig::HickoryDns(ResolverConfig::google_h3()),
 
-            #[cfg(feature = "trust-dns")]
-            "cloudflare" => DnsConfig::TrustDns(ResolverConfig::cloudflare()),
-            #[cfg(all(feature = "trust-dns", feature = "dns-over-tls"))]
-            "cloudflare_tls" => DnsConfig::TrustDns(ResolverConfig::cloudflare_tls()),
-            #[cfg(all(feature = "trust-dns", feature = "dns-over-https"))]
-            "cloudflare_https" => DnsConfig::TrustDns(ResolverConfig::cloudflare_https()),
+            #[cfg(feature = "hickory-dns")]
+            "cloudflare" => DnsConfig::HickoryDns(ResolverConfig::cloudflare()),
+            #[cfg(all(
+                feature = "hickory-dns",
+                any(feature = "dns-over-tls", feature = "dns-over-native-tls")
+            ))]
+            "cloudflare_tls" => DnsConfig::HickoryDns(ResolverConfig::cloudflare_tls()),
+            #[cfg(all(feature = "hickory-dns", feature = "dns-over-https"))]
+            "cloudflare_https" => DnsConfig::HickoryDns(ResolverConfig::cloudflare_https()),
 
-            #[cfg(feature = "trust-dns")]
-            "quad9" => DnsConfig::TrustDns(ResolverConfig::quad9()),
-            #[cfg(all(feature = "trust-dns", feature = "dns-over-tls"))]
-            "quad9_tls" => DnsConfig::TrustDns(ResolverConfig::quad9_tls()),
-            #[cfg(all(feature = "trust-dns", feature = "dns-over-https"))]
-            "quad9_https" => DnsConfig::TrustDns(ResolverConfig::quad9_https()),
+            #[cfg(feature = "hickory-dns")]
+            "quad9" => DnsConfig::HickoryDns(ResolverConfig::quad9()),
+            #[cfg(all(
+                feature = "hickory-dns",
+                any(feature = "dns-over-tls", feature = "dns-over-native-tls")
+            ))]
+            "quad9_tls" => DnsConfig::HickoryDns(ResolverConfig::quad9_tls()),
+            #[cfg(all(feature = "hickory-dns", feature = "dns-over-https"))]
+            "quad9_https" => DnsConfig::HickoryDns(ResolverConfig::quad9_https()),
 
             nameservers => self.parse_dns_nameservers(nameservers)?,
         };
@@ -2091,7 +2193,7 @@ impl Config {
         Ok(())
     }
 
-    #[cfg(any(feature = "trust-dns", feature = "local-dns"))]
+    #[cfg(any(feature = "hickory-dns", feature = "local-dns"))]
     fn parse_dns_nameservers(&mut self, nameservers: &str) -> Result<DnsConfig, Error> {
         #[cfg(all(unix, feature = "local-dns"))]
         if let Some(nameservers) = nameservers.strip_prefix("unix://") {
@@ -2169,11 +2271,11 @@ impl Config {
         Ok(if c.name_servers().is_empty() {
             DnsConfig::System
         } else {
-            DnsConfig::TrustDns(c)
+            DnsConfig::HickoryDns(c)
         })
     }
 
-    #[cfg(not(any(feature = "trust-dns", feature = "local-dns")))]
+    #[cfg(not(any(feature = "hickory-dns", feature = "local-dns")))]
     fn parse_dns_nameservers(&mut self, _nameservers: &str) -> Result<DnsConfig, Error> {
         Ok(DnsConfig::System)
     }
@@ -2385,6 +2487,10 @@ impl fmt::Display for Config {
                             #[allow(unreachable_patterns)]
                             p => Some(p.as_str().to_owned()),
                         },
+                        #[cfg(target_os = "macos")]
+                        launchd_tcp_socket_name: local.launchd_tcp_socket_name.clone(),
+                        #[cfg(target_os = "macos")]
+                        launchd_udp_socket_name: local.launchd_udp_socket_name.clone(),
                         #[cfg(feature = "local-redir")]
                         tcp_redir: if local.tcp_redir != RedirType::tcp_default() {
                             Some(local.tcp_redir.to_string())
@@ -2449,6 +2555,8 @@ impl fmt::Display for Config {
                                 Address::DomainNameAddress(.., port) => Some(*port),
                             },
                         },
+                        #[cfg(feature = "local-dns")]
+                        client_cache_size: local.client_cache_size,
                         #[cfg(feature = "local-tun")]
                         tun_device_fd: local.tun_device_fd.clone(),
                         #[cfg(feature = "local-tun")]
@@ -2652,9 +2760,9 @@ impl fmt::Display for Config {
 
         match self.dns {
             DnsConfig::System => {}
-            #[cfg(feature = "trust-dns")]
-            DnsConfig::TrustDns(ref dns) => {
-                jconf.dns = Some(SSDnsConfig::TrustDns(dns.clone()));
+            #[cfg(feature = "hickory-dns")]
+            DnsConfig::HickoryDns(ref dns) => {
+                jconf.dns = Some(SSDnsConfig::HickoryDns(dns.clone()));
             }
             #[cfg(feature = "local-dns")]
             DnsConfig::LocalDns(ref ns) => {

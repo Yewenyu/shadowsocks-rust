@@ -18,6 +18,10 @@ use futures::{
     future::{self, Either},
     FutureExt,
 };
+use hickory_resolver::proto::{
+    op::{header::MessageType, response_code::ResponseCode, Message, OpCode, Query},
+    rr::{DNSClass, Name, RData, RecordType},
+};
 use log::{debug, error, info, trace, warn};
 use rand::{thread_rng, Rng};
 use tokio::{
@@ -25,22 +29,21 @@ use tokio::{
     net::{TcpStream, UdpSocket},
     time,
 };
-use trust_dns_resolver::proto::{
-    op::{header::MessageType, response_code::ResponseCode, Message, OpCode, Query},
-    rr::{DNSClass, Name, RData, RecordType},
-};
 
 use shadowsocks::{
     config::Mode,
-    lookup_then,
-    net::{TcpListener, UdpSocket as ShadowUdpSocket},
+    net::TcpListener,
     relay::{udprelay::MAXIMUM_UDP_PAYLOAD_SIZE, Address},
     ServerAddr,
 };
 
 use crate::{
     acl::AccessControl,
-    local::{context::ServiceContext, loadbalancing::PingBalancer},
+    local::{
+        context::ServiceContext,
+        loadbalancing::PingBalancer,
+        net::{tcp::listener::create_standard_tcp_listener, udp::listener::create_standard_udp_listener},
+    },
 };
 
 use super::{client_cache::DnsClientCache, config::NameServerAddr};
@@ -53,6 +56,11 @@ pub struct DnsBuilder {
     remote_addr: Address,
     bind_addr: ServerAddr,
     balancer: PingBalancer,
+    client_cache_size: usize,
+    #[cfg(target_os = "macos")]
+    launchd_tcp_socket_name: Option<String>,
+    #[cfg(target_os = "macos")]
+    launchd_udp_socket_name: Option<String>,
 }
 
 impl DnsBuilder {
@@ -62,9 +70,17 @@ impl DnsBuilder {
         local_addr: NameServerAddr,
         remote_addr: Address,
         balancer: PingBalancer,
+        client_cache_size: usize,
     ) -> DnsBuilder {
         let context = ServiceContext::new();
-        DnsBuilder::with_context(Arc::new(context), bind_addr, local_addr, remote_addr, balancer)
+        DnsBuilder::with_context(
+            Arc::new(context),
+            bind_addr,
+            local_addr,
+            remote_addr,
+            balancer,
+            client_cache_size,
+        )
     }
 
     /// Create with an existed `context`
@@ -74,6 +90,7 @@ impl DnsBuilder {
         local_addr: NameServerAddr,
         remote_addr: Address,
         balancer: PingBalancer,
+        client_cache_size: usize,
     ) -> DnsBuilder {
         DnsBuilder {
             context,
@@ -82,6 +99,11 @@ impl DnsBuilder {
             remote_addr,
             bind_addr,
             balancer,
+            client_cache_size,
+            #[cfg(target_os = "macos")]
+            launchd_tcp_socket_name: None,
+            #[cfg(target_os = "macos")]
+            launchd_udp_socket_name: None,
         }
     }
 
@@ -90,33 +112,127 @@ impl DnsBuilder {
         self.mode = mode;
     }
 
+    /// macOS launchd activate socket
+    #[cfg(target_os = "macos")]
+    pub fn set_launchd_tcp_socket_name(&mut self, n: String) {
+        self.launchd_tcp_socket_name = Some(n);
+    }
+
+    /// macOS launchd activate socket
+    #[cfg(target_os = "macos")]
+    pub fn set_launchd_udp_socket_name(&mut self, n: String) {
+        self.launchd_udp_socket_name = Some(n);
+    }
+
     /// Build DNS server
     pub async fn build(self) -> io::Result<Dns> {
-        let client = Arc::new(DnsClient::new(self.context.clone(), self.balancer, self.mode));
+        let client = Arc::new(DnsClient::new(
+            self.context.clone(),
+            self.balancer,
+            self.mode,
+            self.client_cache_size,
+        ));
 
         let local_addr = Arc::new(self.local_addr);
         let remote_addr = Arc::new(self.remote_addr);
 
         let mut tcp_server = None;
         if self.mode.enable_tcp() {
-            let server = DnsTcpServer::new(
+            #[allow(unused_mut)]
+            let mut builder = DnsTcpServerBuilder::new(
                 self.context.clone(),
-                &self.bind_addr,
+                self.bind_addr.clone(),
                 local_addr.clone(),
                 remote_addr.clone(),
                 client.clone(),
-            )
-            .await?;
+            );
+
+            #[cfg(target_os = "macos")]
+            if let Some(s) = self.launchd_tcp_socket_name {
+                builder.set_launchd_socket_name(s);
+            }
+
+            let server = builder.build().await?;
             tcp_server = Some(server);
         }
 
         let mut udp_server = None;
         if self.mode.enable_udp() {
-            let server = DnsUdpServer::new(self.context, &self.bind_addr, local_addr, remote_addr, client).await?;
+            #[allow(unused_mut)]
+            let mut builder = DnsUdpServerBuilder::new(self.context, self.bind_addr, local_addr, remote_addr, client);
+
+            #[cfg(target_os = "macos")]
+            if let Some(s) = self.launchd_udp_socket_name {
+                builder.set_launchd_socket_name(s);
+            }
+
+            let server = builder.build().await?;
             udp_server = Some(server);
         }
 
         Ok(Dns { tcp_server, udp_server })
+    }
+}
+
+struct DnsTcpServerBuilder {
+    context: Arc<ServiceContext>,
+    bind_addr: ServerAddr,
+    local_addr: Arc<NameServerAddr>,
+    remote_addr: Arc<Address>,
+    client: Arc<DnsClient>,
+    #[cfg(target_os = "macos")]
+    launchd_socket_name: Option<String>,
+}
+
+impl DnsTcpServerBuilder {
+    fn new(
+        context: Arc<ServiceContext>,
+        bind_addr: ServerAddr,
+        local_addr: Arc<NameServerAddr>,
+        remote_addr: Arc<Address>,
+        client: Arc<DnsClient>,
+    ) -> DnsTcpServerBuilder {
+        DnsTcpServerBuilder {
+            context,
+            bind_addr,
+            local_addr,
+            remote_addr,
+            client,
+            #[cfg(target_os = "macos")]
+            launchd_socket_name: None,
+        }
+    }
+
+    /// macOS launchd activate socket
+    #[cfg(target_os = "macos")]
+    fn set_launchd_socket_name(&mut self, n: String) {
+        self.launchd_socket_name = Some(n);
+    }
+
+    async fn build(self) -> io::Result<DnsTcpServer> {
+        cfg_if::cfg_if! {
+            if #[cfg(target_os = "macos")] {
+                let listener = if let Some(launchd_socket_name) = self.launchd_socket_name {
+                    use tokio::net::TcpListener as TokioTcpListener;
+                    use crate::net::launch_activate_socket::get_launch_activate_tcp_listener;
+
+                    let std_listener = get_launch_activate_tcp_listener(&launchd_socket_name)?;
+                    let tokio_listener = TokioTcpListener::from_std(std_listener)?;
+                    TcpListener::from_listener(tokio_listener, self.context.accept_opts())?
+                } else {
+                    create_standard_tcp_listener(&self.context, &self.bind_addr).await?
+                };
+            } else {
+                let listener = create_standard_tcp_listener(&self.context, &self.bind_addr).await?;
+            }
+        }
+
+        Ok(DnsTcpServer {
+            listener,
+            local_addr: self.local_addr,
+            remote_addr: self.remote_addr,
+            client: self.client,
+        })
     }
 }
 
@@ -129,31 +245,6 @@ pub struct DnsTcpServer {
 }
 
 impl DnsTcpServer {
-    async fn new(
-        context: Arc<ServiceContext>,
-        bind_addr: &ServerAddr,
-        local_addr: Arc<NameServerAddr>,
-        remote_addr: Arc<Address>,
-        client: Arc<DnsClient>,
-    ) -> io::Result<DnsTcpServer> {
-        let listener = match *bind_addr {
-            ServerAddr::SocketAddr(ref saddr) => TcpListener::bind_with_opts(saddr, context.accept_opts()).await?,
-            ServerAddr::DomainName(ref dname, port) => {
-                lookup_then!(context.context_ref(), dname, port, |addr| {
-                    TcpListener::bind_with_opts(&addr, context.accept_opts()).await
-                })?
-                .1
-            }
-        };
-
-        Ok(DnsTcpServer {
-            listener,
-            local_addr,
-            remote_addr,
-            client,
-        })
-    }
-
     /// Get server local address
     pub fn local_addr(&self) -> io::Result<SocketAddr> {
         self.listener.local_addr()
@@ -256,6 +347,67 @@ impl DnsTcpServer {
     }
 }
 
+struct DnsUdpServerBuilder {
+    context: Arc<ServiceContext>,
+    bind_addr: ServerAddr,
+    local_addr: Arc<NameServerAddr>,
+    remote_addr: Arc<Address>,
+    client: Arc<DnsClient>,
+    #[cfg(target_os = "macos")]
+    launchd_socket_name: Option<String>,
+}
+
+impl DnsUdpServerBuilder {
+    fn new(
+        context: Arc<ServiceContext>,
+        bind_addr: ServerAddr,
+        local_addr: Arc<NameServerAddr>,
+        remote_addr: Arc<Address>,
+        client: Arc<DnsClient>,
+    ) -> DnsUdpServerBuilder {
+        DnsUdpServerBuilder {
+            context,
+            bind_addr,
+            local_addr,
+            remote_addr,
+            client,
+            #[cfg(target_os = "macos")]
+            launchd_socket_name: None,
+        }
+    }
+
+    /// macOS launchd activate socket
+    #[cfg(target_os = "macos")]
+    fn set_launchd_socket_name(&mut self, n: String) {
+        self.launchd_socket_name = Some(n);
+    }
+
+    async fn build(self) -> io::Result<DnsUdpServer> {
+        cfg_if::cfg_if! {
+            if #[cfg(target_os = "macos")] {
+                let socket = if let Some(launchd_socket_name) = self.launchd_socket_name {
+                    use tokio::net::UdpSocket as TokioUdpSocket;
+                    use crate::net::launch_activate_socket::get_launch_activate_udp_socket;
+
+                    let std_socket = get_launch_activate_udp_socket(&launchd_socket_name)?;
+                    TokioUdpSocket::from_std(std_socket)?
+                } else {
+                    create_standard_udp_listener(&self.context, &self.bind_addr).await?.into()
+                };
+            } else {
+                let socket = create_standard_udp_listener(&self.context, &self.bind_addr).await?.into();
+            }
+        }
+
+        Ok(DnsUdpServer {
+            listener: Arc::new(socket),
+            local_addr: self.local_addr,
+            remote_addr: self.remote_addr,
+            client: self.client,
+        })
+    }
+}
+
 /// DNS UDP server instance
 pub struct DnsUdpServer {
     listener: Arc<UdpSocket>,
@@ -265,34 +417,6 @@ pub struct DnsUdpServer {
 }
 
 impl DnsUdpServer {
-    async fn new(
-        context: Arc<ServiceContext>,
-        bind_addr: &ServerAddr,
-        local_addr: Arc<NameServerAddr>,
-        remote_addr: Arc<Address>,
-        client: Arc<DnsClient>,
-    ) -> io::Result<DnsUdpServer> {
-        let socket = match *bind_addr {
-            ServerAddr::SocketAddr(ref saddr) => ShadowUdpSocket::listen(saddr).await?,
-            ServerAddr::DomainName(ref dname, port) => {
-                lookup_then!(context.context_ref(), dname, port, |addr| {
-                    ShadowUdpSocket::listen(&addr).await
-                })?
-                .1
-            }
-        };
-        let socket: UdpSocket = socket.into();
-
-        let listener = Arc::new(socket);
-
-        Ok(DnsUdpServer {
-            listener,
-            local_addr,
-            remote_addr,
-            client,
-        })
-    }
-
     /// Get server local address
     pub fn local_addr(&self) -> io::Result<SocketAddr> {
         self.listener.local_addr()
@@ -589,10 +713,10 @@ struct DnsClient {
 }
 
 impl DnsClient {
-    fn new(context: Arc<ServiceContext>, balancer: PingBalancer, mode: Mode) -> DnsClient {
+    fn new(context: Arc<ServiceContext>, balancer: PingBalancer, mode: Mode, client_cache_size: usize) -> DnsClient {
         DnsClient {
             context,
-            client_cache: DnsClientCache::new(5),
+            client_cache: DnsClientCache::new(client_cache_size),
             mode,
             balancer,
             attempts: 2,

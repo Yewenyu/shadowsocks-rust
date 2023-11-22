@@ -6,7 +6,7 @@ use std::{
 };
 
 use log::{error, trace};
-use tun::{platform::Device as TunDevice, Device};
+use tun::{platform::Device as TunDevice, Device, Error as TunError};
 
 /// These numbers are used by reliable protocols for determining
 /// retransmission behavior and are included in the routing structure.

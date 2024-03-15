@@ -1,3 +1,60 @@
+shadowsocks-rust (1.18.1) unstable; urgency=medium
+
+  ## Features
+
+  - Default logging framework changed to [`tracing-subscriber`](https://crates.io/crates/tracing-subscriber), which:
+    - Support libraries that log with both [`tracing`](https://crates.io/crates/tracing), and [`log`](https://crates.io/crates/log).
+    - NOTE: `--log-config` parameter will apply only to [`log4rs`](https://crates.io/crates/log4rs), which doesn't support the `tracing` framework.
+
+  ## Bug Fixes
+
+  - #1425 Enable `EDNS(0)` by default for hickory-dns resolver.
+
+  ## NOTE
+
+  - [`clap`](https://crates.io/crates/clap) upgraded MSRV (Minimal Supported Rust Version) to v1.74 since v4.5.0. This project will have to stay in v4.4 until the next major release.
+
+ -- ty <zonyitoo@gmail.com> Sun, 18 Feb 2024 22:05:00 +0800
+
+shadowsocks-rust (1.18.0) unstable; urgency=medium
+
+  Mostly identical to v1.17.2, except that:
+
+  - Minimal Supported Rust Version (MSRV) upgraded from v1.64 to v1.71
+  - #1259 Fixed Snapcraft build. `base` changed to `core22`, auto-build architecture changed to [`arm64`, `amd64`, `armhf`]
+  - #1426 MIPS targets removed from release build, because MIPS targets are now downgraded to TIER 3
+
+ -- ty <zonyitoo@gmail.com> Thu, 08 Feb 2024 00:00:00 +0800
+
+shadowsocks-rust (1.17.2) unstable; urgency=medium
+
+  ## Features
+
+  - `local`: `socks` local server will support SOCKS5, SOCKS4a, HTTP proxy protocols when `local-http`, `local-socks4` features are enabled
+  - `local`: Support setting `udp_mtu` in configuration file to actively reject `packet.size > MTU`
+
+  ## Bug Fixes
+
+  - #1378 dns-over-tls/https with rustls add dependencies to certs
+  - #1381 Set the incoming socket buffer sizes properly on the listen socket
+  - #1414 TUN synchronize SYN packet and Socket creation
+
+shadowsocks-rust (1.17.1) unstable; urgency=medium
+
+  ## Features
+
+  - #1330 `local`: Support macOS launch activate socket (https://developer.apple.com/documentation/xpc/1505523-launch_activate_socket)
+  - #1357 `local`: Upgrade hyper (https://crates.io/crates/hyper) to v1.0
+
+  ## Bug Fixes
+
+  - #1328 `run_as_user` aborts if any error occurs
+
+  ## Miscellaneous
+
+  - Minor improvements for `local-tun` on Windows
+  - Upgrade `shadowsocks-crypto` that supports `sm4-gcm`, `sm4-ccm` non-standard AEAD ciphers
+
 shadowsocks-rust (1.17.0) unstable; urgency=medium
 
   ## Features

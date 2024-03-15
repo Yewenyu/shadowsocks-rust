@@ -158,6 +158,8 @@ struct SSConfig {
     udp_timeout: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     udp_max_associations: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    udp_mtu: Option<usize>,
 
     #[serde(skip_serializing_if = "Option::is_none", alias = "shadowsocks")]
     servers: Option<Vec<SSServerExtConfig>>,
@@ -426,10 +428,7 @@ cfg_if! {
             ///
             /// Document: <https://www.freebsd.org/doc/handbook/firewalls-pf.html>
             #[cfg(any(
-                target_os = "openbsd",
                 target_os = "freebsd",
-                target_os = "netbsd",
-                target_os = "solaris",
                 target_os = "macos",
                 target_os = "ios"
             ))]
@@ -470,7 +469,7 @@ cfg_if! {
                         const AVAILABLE_TYPES: &[&str] = &[RedirType::TProxy.name()];
                         AVAILABLE_TYPES
                     }
-                } else if #[cfg(any(target_os = "openbsd", target_os = "freebsd"))] {
+                } else if #[cfg(any(target_os = "freebsd"))] {
                     /// Default TCP transparent proxy solution on this platform
                     pub fn tcp_default() -> RedirType {
                         RedirType::PacketFilter
@@ -494,7 +493,7 @@ cfg_if! {
                         const AVAILABLE_TYPES: &[&str] = &[RedirType::PacketFilter.name(), RedirType::IpFirewall.name()];
                         AVAILABLE_TYPES
                     }
-                } else if #[cfg(any(target_os = "netbsd", target_os = "solaris", target_os = "macos", target_os = "ios"))] {
+                } else if #[cfg(any(target_os = "macos", target_os = "ios"))] {
                     /// Default TCP transparent proxy solution on this platform
                     pub fn tcp_default() -> RedirType {
                         RedirType::PacketFilter
@@ -509,13 +508,13 @@ cfg_if! {
 
                     /// Default UDP transparent proxy solution on this platform
                     pub fn udp_default() -> RedirType {
-                        RedirType::NotSupported
+                        RedirType::PacketFilter
                     }
 
                     /// Available UDP transparent proxy types
                     #[doc(hidden)]
                     pub const fn udp_available_types() -> &'static [&'static str] {
-                        const AVAILABLE_TYPES: &[&str] = &[];
+                        const AVAILABLE_TYPES: &[&str] = &[RedirType::PacketFilter.name()];
                         AVAILABLE_TYPES
                     }
                 } else {
@@ -563,10 +562,7 @@ cfg_if! {
                     RedirType::TProxy => "tproxy",
 
                     #[cfg(any(
-                        target_os = "openbsd",
                         target_os = "freebsd",
-                        target_os = "netbsd",
-                        target_os = "solaris",
                         target_os = "macos",
                         target_os = "ios"
                     ))]
@@ -606,10 +602,7 @@ cfg_if! {
                     "tproxy" => Ok(RedirType::TProxy),
 
                     #[cfg(any(
-                        target_os = "openbsd",
                         target_os = "freebsd",
-                        target_os = "netbsd",
-                        target_os = "solaris",
                         target_os = "macos",
                         target_os = "ios",
                     ))]
@@ -619,7 +612,6 @@ cfg_if! {
                         target_os = "freebsd",
                         target_os = "macos",
                         target_os = "ios",
-                        target_os = "dragonfly"
                     ))]
                     "ipfw" => Ok(RedirType::IpFirewall),
 
@@ -1231,6 +1223,10 @@ pub struct Config {
     pub udp_timeout: Option<Duration>,
     /// Maximum number of UDP Associations, default is unconfigured
     pub udp_max_associations: Option<usize>,
+    /// Maximum Transmission Unit (MTU) size for UDP packets
+    /// 65535 by default. Suggestion: 1500
+    /// NOTE: mtu includes IP header, UDP header, UDP payload
+    pub udp_mtu: Option<usize>,
 
     /// ACL configuration (Global)
     ///
@@ -1356,6 +1352,7 @@ impl Config {
 
             udp_timeout: None,
             udp_max_associations: None,
+            udp_mtu: None,
 
             acl: None,
 
@@ -1630,10 +1627,20 @@ impl Config {
                                 }
                             }
                         }
-
                         #[cfg(feature = "local-tun")]
                         if let Some(fd) = local.tun_device_fd {
                             local_config.tun_device_fd = Some(fd);
+                        }
+                        #[cfg(feature = "local-tun")]
+                        if let Some(tun_interface_destination) = local.tun_interface_destination {
+                            match tun_interface_destination.parse::<IpNet>() {
+                                Ok(addr) => local_config.tun_interface_destination = Some(addr),
+                                Err(..) => {
+                                    let err =
+                                        Error::new(ErrorKind::Malformed, "`tun_interface_destination` invalid", None);
+                                    return Err(err);
+                                }
+                            }
                         }
 
                         #[cfg(feature = "local-tun")]
@@ -2063,6 +2070,9 @@ impl Config {
 
         // Maximum associations to be kept simultaneously
         nconfig.udp_max_associations = config.udp_max_associations;
+
+        // MTU for UDP
+        nconfig.udp_mtu = config.udp_mtu;
 
         // RLIMIT_NOFILE
         #[cfg(all(unix, not(target_os = "android")))]
@@ -2773,6 +2783,8 @@ impl fmt::Display for Config {
         jconf.udp_timeout = self.udp_timeout.map(|t| t.as_secs());
 
         jconf.udp_max_associations = self.udp_max_associations;
+
+        jconf.udp_mtu = self.udp_mtu;
 
         #[cfg(all(unix, not(target_os = "android")))]
         {

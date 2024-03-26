@@ -1,5 +1,5 @@
 [proxy_all]
 
 [bypass_list]
-(^|\.)ip111\.cn
+(^|\.)ipip\.net
 [proxy_list]

@@ -15,8 +15,5 @@ shadowsocks-rust = { path = "..",default-features = false,features = [
     "logging",
     "server"
     ]}
-lazy_static = "*"
-serde = { version = "1.0.134", features = ["derive"] }
-json5 = "0.4"
-serde_yaml = "0.8"
+
 clap = "*"

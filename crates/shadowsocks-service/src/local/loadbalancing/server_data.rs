@@ -2,12 +2,17 @@
 
 use std::{
     fmt::{self, Debug},
-    sync::atomic::{AtomicU32, Ordering},
+    sync::{
+        atomic::{AtomicU32, Ordering},
+        Arc,
+    },
     time::Duration,
 };
 
-use shadowsocks::ServerConfig;
+use shadowsocks::{net::ConnectOpts, ServerConfig};
 use tokio::sync::Mutex;
+
+use crate::{config::ServerInstanceConfig, local::context::ServiceContext};
 
 use super::server_stat::{Score, ServerStat};
 
@@ -61,25 +66,52 @@ impl Debug for ServerScore {
 pub struct ServerIdent {
     tcp_score: ServerScore,
     udp_score: ServerScore,
-    svr_cfg: ServerConfig,
+    svr_cfg: ServerInstanceConfig,
+    connect_opts: ConnectOpts,
 }
 
 impl ServerIdent {
     /// Create a `ServerIdent`
-    pub fn new(svr_cfg: ServerConfig, max_server_rtt: Duration, check_window: Duration) -> ServerIdent {
+    pub fn new(
+        context: Arc<ServiceContext>,
+        svr_cfg: ServerInstanceConfig,
+        max_server_rtt: Duration,
+        check_window: Duration,
+    ) -> ServerIdent {
+        #[allow(unused_mut)]
+        let mut connect_opts = context.connect_opts_ref().clone();
+
+        #[cfg(any(target_os = "linux", target_os = "android"))]
+        if let Some(fwmark) = svr_cfg.outbound_fwmark {
+            connect_opts.fwmark = Some(fwmark);
+        }
+
+        if let Some(bind_local_addr) = svr_cfg.outbound_bind_addr {
+            connect_opts.bind_local_addr = Some(bind_local_addr);
+        }
+
+        if let Some(ref bind_interface) = svr_cfg.outbound_bind_interface {
+            connect_opts.bind_interface = Some(bind_interface.clone());
+        }
+
         ServerIdent {
-            tcp_score: ServerScore::new(svr_cfg.weight().tcp_weight(), max_server_rtt, check_window),
-            udp_score: ServerScore::new(svr_cfg.weight().udp_weight(), max_server_rtt, check_window),
+            tcp_score: ServerScore::new(svr_cfg.config.weight().tcp_weight(), max_server_rtt, check_window),
+            udp_score: ServerScore::new(svr_cfg.config.weight().udp_weight(), max_server_rtt, check_window),
             svr_cfg,
+            connect_opts,
         }
     }
 
+    pub fn connect_opts_ref(&self) -> &ConnectOpts {
+        &self.connect_opts
+    }
+
     pub fn server_config(&self) -> &ServerConfig {
-        &self.svr_cfg
+        &self.svr_cfg.config
     }
 
     pub fn server_config_mut(&mut self) -> &mut ServerConfig {
-        &mut self.svr_cfg
+        &mut self.svr_cfg.config
     }
 
     pub fn tcp_score(&self) -> &ServerScore {

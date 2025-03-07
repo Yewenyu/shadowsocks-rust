@@ -1,0 +1,148 @@
+2024-03-29T18:24:20.977643+08:00 - log4rs doesn't support the tracing (https://crates.io/crates/tracing) framework, 
+         so it would be removed in the future. Consider configure logging with RUST_LOG environment variable. 
+         Check more configuration detail in https://docs.rs/tracing-subscriber/latest/tracing_subscriber/fmt/index.html#filtering-events-with-environment-variables .
+2024-03-29T18:24:20.981155+08:00 - rlimit NOFILE adjusted rlimit { rlim_cur: 61440, rlim_max: 9223372036854775807 }
+2024-03-29T18:24:20.981205+08:00 - shadowsocks local 1.18.2 build 2024-03-28T03:03:53.093586+00:00
+2024-03-29T18:24:20.983567+08:00 - shadowsocks socks TCP listening on 0.0.0.0:7779
+2024-03-29T18:24:20.983714+08:00 - shadowsocks HTTP listening on 0.0.0.0:7780
+2024-03-29T18:24:28.392588+08:00 - CONNECT waa-pa.clients6.google.com:443
+2024-03-29T18:24:28.393896+08:00 - CONNECT play.google.com:443
+2024-03-29T18:24:28.396549+08:00 - established tcp tunnel 127.0.0.1:59974 <-> waa-pa.clients6.google.com:443 through sever 128.1.62.187:47117 (outbound: 128.1.62.187:47117)
+2024-03-29T18:24:28.397026+08:00 - established tcp tunnel 127.0.0.1:59973 <-> play.google.com:443 through sever 128.1.62.187:47117 (outbound: 128.1.62.187:47117)
+2024-03-29T18:24:28.696147+08:00 - CONNECT play.google.com:443
+2024-03-29T18:24:28.702690+08:00 - established tcp tunnel 127.0.0.1:59977 <-> play.google.com:443 through sever 128.1.62.187:47117 (outbound: 128.1.62.187:47117)
+2024-03-29T18:24:29.689662+08:00 - CONNECT play.google.com:443
+2024-03-29T18:24:29.694709+08:00 - established tcp tunnel 127.0.0.1:59981 <-> play.google.com:443 through sever 128.1.62.187:47117 (outbound: 128.1.62.187:47117)
+2024-03-29T18:24:30.381440+08:00 - CONNECT ssl.gstatic.com:443
+2024-03-29T18:24:30.393564+08:00 - established tcp tunnel 127.0.0.1:59983 <-> ssl.gstatic.com:443 through sever 128.1.62.187:47117 (outbound: 128.1.62.187:47117)
+2024-03-29T18:24:31.049339+08:00 - CONNECT docs.google.com:443
+2024-03-29T18:24:31.054053+08:00 - established tcp tunnel 127.0.0.1:59985 <-> docs.google.com:443 through sever 128.1.62.187:47117 (outbound: 128.1.62.187:47117)
+2024-03-29T18:24:34.713382+08:00 - CONNECT mtalk.google.com:5228
+2024-03-29T18:24:34.717864+08:00 - established tcp tunnel 127.0.0.1:59989 <-> mtalk.google.com:5228 through sever 128.1.62.187:47117 (outbound: 128.1.62.187:47117)
+2024-03-29T18:24:38.383078+08:00 - CONNECT docs.google.com:443
+2024-03-29T18:24:38.387459+08:00 - established tcp tunnel 127.0.0.1:59991 <-> docs.google.com:443 through sever 128.1.62.187:47117 (outbound: 128.1.62.187:47117)
+2024-03-29T18:24:52.393437+08:00 - CONNECT docs.google.com:443
+2024-03-29T18:24:52.398238+08:00 - established tcp tunnel 127.0.0.1:60002 <-> docs.google.com:443 through sever 128.1.62.187:47117 (outbound: 128.1.62.187:47117)
+2024-03-29T18:24:54.385219+08:00 - CONNECT github.com:443
+2024-03-29T18:24:54.393700+08:00 - established tcp tunnel 127.0.0.1:60017 <-> github.com:443 through sever 128.1.62.187:47117 (outbound: 128.1.62.187:47117)
+2024-03-29T18:24:55.196049+08:00 - CONNECT content-autofill.googleapis.com:443
+2024-03-29T18:24:55.203550+08:00 - established tcp tunnel 127.0.0.1:60019 <-> content-autofill.googleapis.com:443 through sever 128.1.62.187:47117 (outbound: 128.1.62.187:47117)
+2024-03-29T18:24:58.456650+08:00 - copy bidirection ends with error: unexpected end of file, a_to_b: Running(CopyBuffer { read_done: false, pos: 0, cap: 0, amt: 0, .. }), b_to_a: Done(0)
+2024-03-29T18:24:58.459269+08:00 - copy bidirection ends with error: unexpected end of file, a_to_b: Running(CopyBuffer { read_done: false, pos: 0, cap: 0, amt: 0, .. }), b_to_a: Done(0)
+2024-03-29T18:24:58.709629+08:00 - copy bidirection ends with error: unexpected end of file, a_to_b: Running(CopyBuffer { read_done: false, pos: 0, cap: 0, amt: 0, .. }), b_to_a: Done(0)
+2024-03-29T18:24:59.703521+08:00 - copy bidirection ends with error: unexpected end of file, a_to_b: Running(CopyBuffer { read_done: false, pos: 0, cap: 0, amt: 0, .. }), b_to_a: Done(0)
+2024-03-29T18:25:00.383369+08:00 - CONNECT waa-pa.googleapis.com:443
+2024-03-29T18:25:00.388384+08:00 - established tcp tunnel 127.0.0.1:60023 <-> waa-pa.googleapis.com:443 through sever 128.1.62.187:47117 (outbound: 128.1.62.187:47117)
+2024-03-29T18:25:01.081244+08:00 - copy bidirection ends with error: unexpected end of file, a_to_b: Running(CopyBuffer { read_done: false, pos: 0, cap: 0, amt: 0, .. }), b_to_a: Done(0)
+2024-03-29T18:25:01.136050+08:00 - CONNECT www.google.com:443
+2024-03-29T18:25:01.136284+08:00 - CONNECT ssl.gstatic.com:443
+2024-03-29T18:25:01.146274+08:00 - established tcp tunnel 127.0.0.1:60029 <-> ssl.gstatic.com:443 through sever 128.1.62.187:47117 (outbound: 128.1.62.187:47117)
+2024-03-29T18:25:01.146465+08:00 - established tcp tunnel 127.0.0.1:60028 <-> www.google.com:443 through sever 128.1.62.187:47117 (outbound: 128.1.62.187:47117)
+2024-03-29T18:25:04.389168+08:00 - CONNECT play.google.com:443
+2024-03-29T18:25:04.396075+08:00 - established tcp tunnel 127.0.0.1:60040 <-> play.google.com:443 through sever 128.1.62.187:47117 (outbound: 128.1.62.187:47117)
+2024-03-29T18:25:06.072935+08:00 - CONNECT content-autofill.googleapis.com:443
+2024-03-29T18:25:06.077243+08:00 - established tcp tunnel 127.0.0.1:60042 <-> content-autofill.googleapis.com:443 through sever 128.1.62.187:47117 (outbound: 128.1.62.187:47117)
+2024-03-29T18:25:08.421661+08:00 - copy bidirection ends with error: unexpected end of file, a_to_b: Running(CopyBuffer { read_done: false, pos: 0, cap: 0, amt: 0, .. }), b_to_a: Done(0)
+2024-03-29T18:25:17.977288+08:00 - CONNECT content-autofill.googleapis.com:443
+2024-03-29T18:25:17.983613+08:00 - established tcp tunnel 127.0.0.1:60050 <-> content-autofill.googleapis.com:443 through sever 128.1.62.187:47117 (outbound: 128.1.62.187:47117)
+2024-03-29T18:25:19.693898+08:00 - CONNECT play.google.com:443
+2024-03-29T18:25:19.698093+08:00 - established tcp tunnel 127.0.0.1:60054 <-> play.google.com:443 through sever 128.1.62.187:47117 (outbound: 128.1.62.187:47117)
+2024-03-29T18:25:20.389306+08:00 - CONNECT docs.google.com:443
+2024-03-29T18:25:20.482323+08:00 - established tcp tunnel 127.0.0.1:60056 <-> docs.google.com:443 through sever 128.1.62.187:47117 (outbound: 128.1.62.187:47117)
+2024-03-29T18:25:20.690072+08:00 - CONNECT play.google.com:443
+2024-03-29T18:25:20.694912+08:00 - established tcp tunnel 127.0.0.1:60058 <-> play.google.com:443 through sever 128.1.62.187:47117 (outbound: 128.1.62.187:47117)
+2024-03-29T18:25:21.582795+08:00 - CONNECT m.stripe.com:443
+2024-03-29T18:25:21.596647+08:00 - established tcp tunnel 127.0.0.1:60060 <-> m.stripe.com:443 through sever 128.1.62.187:47117 (outbound: 128.1.62.187:47117)
+2024-03-29T18:25:22.407374+08:00 - copy bidirection ends with error: unexpected end of file, a_to_b: Running(CopyBuffer { read_done: false, pos: 0, cap: 0, amt: 0, .. }), b_to_a: Done(0)
+2024-03-29T18:25:25.215625+08:00 - copy bidirection ends with error: unexpected end of file, a_to_b: Running(CopyBuffer { read_done: false, pos: 0, cap: 0, amt: 0, .. }), b_to_a: Done(0)
+2024-03-29T18:25:28.151872+08:00 - CONNECT content-autofill.googleapis.com:443
+2024-03-29T18:25:28.168216+08:00 - established tcp tunnel 127.0.0.1:60077 <-> content-autofill.googleapis.com:443 through sever 128.1.62.187:47117 (outbound: 128.1.62.187:47117)
+2024-03-29T18:25:28.722163+08:00 - CONNECT play.google.com:443
+2024-03-29T18:25:28.930362+08:00 - established tcp tunnel 127.0.0.1:60079 <-> play.google.com:443 through sever 128.1.62.187:47117 (outbound: 128.1.62.187:47117)
+2024-03-29T18:25:30.503482+08:00 - copy bidirection ends with error: unexpected end of file, a_to_b: Running(CopyBuffer { read_done: false, pos: 0, cap: 0, amt: 0, .. }), b_to_a: Done(0)
+2024-03-29T18:25:31.156241+08:00 - CONNECT ssl.gstatic.com:443
+2024-03-29T18:25:31.156743+08:00 - CONNECT www.google.com:443
+2024-03-29T18:25:31.159643+08:00 - copy bidirection ends with error: unexpected end of file, a_to_b: Running(CopyBuffer { read_done: false, pos: 0, cap: 0, amt: 0, .. }), b_to_a: Done(0)
+2024-03-29T18:25:31.166460+08:00 - established tcp tunnel 127.0.0.1:60083 <-> www.google.com:443 through sever 128.1.62.187:47117 (outbound: 128.1.62.187:47117)
+2024-03-29T18:25:31.167327+08:00 - established tcp tunnel 127.0.0.1:60084 <-> ssl.gstatic.com:443 through sever 128.1.62.187:47117 (outbound: 128.1.62.187:47117)
+2024-03-29T18:25:31.231305+08:00 - copy bidirection ends with error: unexpected end of file, a_to_b: Running(CopyBuffer { read_done: false, pos: 0, cap: 0, amt: 0, .. }), b_to_a: Running(CopyBuffer { read_done: false, pos: 0, cap: 0, amt: 0, .. })
+2024-03-29T18:25:31.232287+08:00 - CONNECT www.google.com:443
+2024-03-29T18:25:31.235153+08:00 - established tcp tunnel 127.0.0.1:60087 <-> www.google.com:443 through sever 128.1.62.187:47117 (outbound: 128.1.62.187:47117)
+2024-03-29T18:25:31.303425+08:00 - copy bidirection ends with error: unexpected end of file, a_to_b: Running(CopyBuffer { read_done: false, pos: 0, cap: 0, amt: 0, .. }), b_to_a: Running(CopyBuffer { read_done: false, pos: 0, cap: 0, amt: 0, .. })
+2024-03-29T18:25:31.672494+08:00 - copy bidirection ends with error: unexpected end of file, a_to_b: Running(CopyBuffer { read_done: false, pos: 0, cap: 0, amt: 0, .. }), b_to_a: Running(CopyBuffer { read_done: false, pos: 0, cap: 0, amt: 0, .. })
+2024-03-29T18:25:31.674227+08:00 - CONNECT m.stripe.com:443
+2024-03-29T18:25:31.680454+08:00 - established tcp tunnel 127.0.0.1:60089 <-> m.stripe.com:443 through sever 128.1.62.187:47117 (outbound: 128.1.62.187:47117)
+2024-03-29T18:25:34.404835+08:00 - copy bidirection ends with error: unexpected end of file, a_to_b: Running(CopyBuffer { read_done: false, pos: 0, cap: 0, amt: 0, .. }), b_to_a: Done(0)
+2024-03-29T18:25:36.086928+08:00 - copy bidirection ends with error: unexpected end of file, a_to_b: Running(CopyBuffer { read_done: false, pos: 0, cap: 0, amt: 0, .. }), b_to_a: Done(0)
+2024-03-29T18:25:42.598020+08:00 - CONNECT content-autofill.googleapis.com:443
+2024-03-29T18:25:42.602698+08:00 - established tcp tunnel 127.0.0.1:60095 <-> content-autofill.googleapis.com:443 through sever 128.1.62.187:47117 (outbound: 128.1.62.187:47117)
+2024-03-29T18:25:47.993048+08:00 - copy bidirection ends with error: unexpected end of file, a_to_b: Running(CopyBuffer { read_done: false, pos: 0, cap: 0, amt: 0, .. }), b_to_a: Done(0)
+2024-03-29T18:25:49.713082+08:00 - copy bidirection ends with error: unexpected end of file, a_to_b: Running(CopyBuffer { read_done: false, pos: 0, cap: 0, amt: 0, .. }), b_to_a: Done(0)
+2024-03-29T18:25:50.492998+08:00 - copy bidirection ends with error: unexpected end of file, a_to_b: Running(CopyBuffer { read_done: false, pos: 0, cap: 0, amt: 0, .. }), b_to_a: Done(0)
+2024-03-29T18:25:50.705074+08:00 - copy bidirection ends with error: unexpected end of file, a_to_b: Running(CopyBuffer { read_done: false, pos: 0, cap: 0, amt: 0, .. }), b_to_a: Done(0)
+2024-03-29T18:25:57.385179+08:00 - CONNECT ssl.gstatic.com:443
+2024-03-29T18:25:57.389671+08:00 - established tcp tunnel 127.0.0.1:60115 <-> ssl.gstatic.com:443 through sever 128.1.62.187:47117 (outbound: 128.1.62.187:47117)
+2024-03-29T18:25:58.230800+08:00 - copy bidirection ends with error: unexpected end of file, a_to_b: Running(CopyBuffer { read_done: false, pos: 0, cap: 0, amt: 0, .. }), b_to_a: Done(0)
+2024-03-29T18:25:58.940004+08:00 - copy bidirection ends with error: unexpected end of file, a_to_b: Running(CopyBuffer { read_done: false, pos: 0, cap: 0, amt: 0, .. }), b_to_a: Done(0)
+2024-03-29T18:26:01.385320+08:00 - CONNECT docs.google.com:443
+2024-03-29T18:26:01.391982+08:00 - established tcp tunnel 127.0.0.1:60120 <-> docs.google.com:443 through sever 128.1.62.187:47117 (outbound: 128.1.62.187:47117)
+2024-03-29T18:26:12.616638+08:00 - copy bidirection ends with error: unexpected end of file, a_to_b: Running(CopyBuffer { read_done: false, pos: 0, cap: 0, amt: 0, .. }), b_to_a: Done(0)
+2024-03-29T18:26:17.392238+08:00 - CONNECT play.google.com:443
+2024-03-29T18:26:17.399799+08:00 - established tcp tunnel 127.0.0.1:60138 <-> play.google.com:443 through sever 128.1.62.187:47117 (outbound: 128.1.62.187:47117)
+2024-03-29T18:26:29.276666+08:00 - log4rs doesn't support the tracing (https://crates.io/crates/tracing) framework, 
+         so it would be removed in the future. Consider configure logging with RUST_LOG environment variable. 
+         Check more configuration detail in https://docs.rs/tracing-subscriber/latest/tracing_subscriber/fmt/index.html#filtering-events-with-environment-variables .
+2024-03-29T18:26:29.281009+08:00 - rlimit NOFILE adjusted rlimit { rlim_cur: 61440, rlim_max: 9223372036854775807 }
+2024-03-29T18:26:29.281079+08:00 - shadowsocks local 1.18.2 build 2024-03-28T03:03:53.093586+00:00
+2024-03-29T18:26:29.283140+08:00 - shadowsocks socks TCP listening on 0.0.0.0:7779
+2024-03-29T18:26:29.283220+08:00 - shadowsocks HTTP listening on 0.0.0.0:7780
+2024-03-29T18:26:29.283233+08:00 - shadowsocks socks5 UDP listening on 0.0.0.0:7779
+2024-03-29T18:26:30.385517+08:00 - CONNECT play.google.com:443
+2024-03-29T18:26:30.389911+08:00 - established tcp tunnel 127.0.0.1:60173 <-> play.google.com:443 through sever 128.1.62.187:47117 (outbound: 128.1.62.187:47117)
+2024-03-29T18:26:30.690693+08:00 - CONNECT play.google.com:443
+2024-03-29T18:26:30.735099+08:00 - established tcp tunnel 127.0.0.1:60175 <-> play.google.com:443 through sever 128.1.62.187:47117 (outbound: 128.1.62.187:47117)
+2024-03-29T18:26:32.382619+08:00 - CONNECT ssl.gstatic.com:443
+2024-03-29T18:26:32.387502+08:00 - established tcp tunnel 127.0.0.1:60179 <-> ssl.gstatic.com:443 through sever 128.1.62.187:47117 (outbound: 128.1.62.187:47117)
+2024-03-29T18:26:32.981252+08:00 - CONNECT docs.google.com:443
+2024-03-29T18:26:32.985886+08:00 - established tcp tunnel 127.0.0.1:60181 <-> docs.google.com:443 through sever 128.1.62.187:47117 (outbound: 128.1.62.187:47117)
+2024-03-29T18:26:33.243524+08:00 - CONNECT play.google.com:443
+2024-03-29T18:26:33.248295+08:00 - established tcp tunnel 127.0.0.1:60183 <-> play.google.com:443 through sever 128.1.62.187:47117 (outbound: 128.1.62.187:47117)
+2024-03-29T18:26:38.691630+08:00 - CONNECT docs.google.com:443
+2024-03-29T18:26:38.708222+08:00 - established tcp tunnel 127.0.0.1:60189 <-> docs.google.com:443 through sever 128.1.62.187:47117 (outbound: 128.1.62.187:47117)
+2024-03-29T18:26:43.007696+08:00 - log4rs doesn't support the tracing (https://crates.io/crates/tracing) framework, 
+         so it would be removed in the future. Consider configure logging with RUST_LOG environment variable. 
+         Check more configuration detail in https://docs.rs/tracing-subscriber/latest/tracing_subscriber/fmt/index.html#filtering-events-with-environment-variables .
+2024-03-29T18:26:43.011126+08:00 - rlimit NOFILE adjusted rlimit { rlim_cur: 61440, rlim_max: 9223372036854775807 }
+2024-03-29T18:26:43.011194+08:00 - shadowsocks local 1.18.2 build 2024-03-28T03:03:53.093586+00:00
+2024-03-29T18:26:43.013381+08:00 - shadowsocks HTTP listening on 0.0.0.0:7780
+2024-03-29T18:26:43.013511+08:00 - shadowsocks socks TCP listening on 0.0.0.0:7779
+2024-03-29T18:26:43.013534+08:00 - shadowsocks socks5 UDP listening on 0.0.0.0:7779
+2024-03-29T18:26:44.394984+08:00 - CONNECT play.google.com:443
+2024-03-29T18:26:44.401955+08:00 - established tcp tunnel 127.0.0.1:60210 <-> play.google.com:443 through sever 128.1.62.187:47117 (outbound: 128.1.62.187:47117)
+2024-03-29T18:26:49.383738+08:00 - CONNECT ssl.gstatic.com:443
+2024-03-29T18:26:49.388337+08:00 - established tcp tunnel 127.0.0.1:60215 <-> ssl.gstatic.com:443 through sever 128.1.62.187:47117 (outbound: 128.1.62.187:47117)
+2024-03-29T18:26:50.878198+08:00 - CONNECT mtalk.google.com:443
+2024-03-29T18:26:50.884978+08:00 - established tcp tunnel 127.0.0.1:60217 <-> mtalk.google.com:443 through sever 128.1.62.187:47117 (outbound: 128.1.62.187:47117)
+2024-03-29T18:26:55.023498+08:00 - CONNECT docs.google.com:443
+2024-03-29T18:26:55.028699+08:00 - established tcp tunnel 127.0.0.1:60232 <-> docs.google.com:443 through sever 128.1.62.187:47117 (outbound: 128.1.62.187:47117)
+2024-03-29T18:26:55.696195+08:00 - CONNECT play.google.com:443
+2024-03-29T18:26:55.706963+08:00 - established tcp tunnel 127.0.0.1:60234 <-> play.google.com:443 through sever 128.1.62.187:47117 (outbound: 128.1.62.187:47117)
+2024-03-29T18:26:59.691443+08:00 - CONNECT play.google.com:443
+2024-03-29T18:26:59.696715+08:00 - established tcp tunnel 127.0.0.1:60238 <-> play.google.com:443 through sever 128.1.62.187:47117 (outbound: 128.1.62.187:47117)
+2024-03-29T18:27:03.385738+08:00 - CONNECT docs.google.com:443
+2024-03-29T18:27:03.389958+08:00 - established tcp tunnel 127.0.0.1:60243 <-> docs.google.com:443 through sever 128.1.62.187:47117 (outbound: 128.1.62.187:47117)
+2024-03-29T18:27:14.411016+08:00 - copy bidirection ends with error: unexpected end of file, a_to_b: Running(CopyBuffer { read_done: false, pos: 0, cap: 0, amt: 0, .. }), b_to_a: Done(0)
+2024-03-29T18:27:16.369159+08:00 - CONNECT clients4.google.com:443
+2024-03-29T18:27:16.375990+08:00 - established tcp tunnel 127.0.0.1:60251 <-> clients4.google.com:443 through sever 128.1.62.187:47117 (outbound: 128.1.62.187:47117)
+2024-03-29T18:27:17.394217+08:00 - CONNECT docs.google.com:443
+2024-03-29T18:27:17.399855+08:00 - established tcp tunnel 127.0.0.1:60253 <-> docs.google.com:443 through sever 128.1.62.187:47117 (outbound: 128.1.62.187:47117)
+2024-03-29T18:32:39.517252+08:00 - log4rs doesn't support the tracing (https://crates.io/crates/tracing) framework, 
+         so it would be removed in the future. Consider configure logging with RUST_LOG environment variable. 
+         Check more configuration detail in https://docs.rs/tracing-subscriber/latest/tracing_subscriber/fmt/index.html#filtering-events-with-environment-variables .
+2024-03-29T18:32:39.523369+08:00 - rlimit NOFILE adjusted rlimit { rlim_cur: 61440, rlim_max: 9223372036854775807 }
+2024-03-29T18:32:39.523507+08:00 - shadowsocks local 1.18.2 build 2024-03-28T03:03:53.093586+00:00
+2024-03-29T18:33:05.529257+08:00 - log4rs doesn't support the tracing (https://crates.io/crates/tracing) framework, 
+         so it would be removed in the future. Consider configure logging with RUST_LOG environment variable. 
+         Check more configuration detail in https://docs.rs/tracing-subscriber/latest/tracing_subscriber/fmt/index.html#filtering-events-with-environment-variables .
+2024-03-29T18:33:05.533229+08:00 - rlimit NOFILE adjusted rlimit { rlim_cur: 61440, rlim_max: 9223372036854775807 }
+2024-03-29T18:33:05.533292+08:00 - shadowsocks local 1.18.2 build 2024-03-28T03:03:53.093586+00:00

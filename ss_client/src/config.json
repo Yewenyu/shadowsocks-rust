@@ -24,9 +24,13 @@
             "protocol": "http",
             "local_address": "0.0.0.0",
             "local_port": 7780
+        },
+        {
+            "protocol": "tun",
+            "tun_device_fd": 7
         }
     ],
-    "local_address": "192.168.1.100",
+    "local_address": "127.0.0.1",
     "local_port": 7779,
     "mode": "tcp_and_udp"
     

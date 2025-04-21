@@ -3,7 +3,7 @@ use std::{env, thread, time::Duration};
 fn main() {
     let base_dir = env::current_dir().expect("not found path");
 
-    let configPath = String::from(base_dir.to_str().expect("msg")) + "/src/config.json";
+    let configPath = String::from(base_dir.to_str().expect("msg")) + "/ss_client/src/config.json";
     println!("{}", configPath);
     // let newP = configPath.clone();
     // let _ = thread::spawn(move || {

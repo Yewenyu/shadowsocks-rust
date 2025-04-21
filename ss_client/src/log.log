@@ -146,3 +146,69 @@
          Check more configuration detail in https://docs.rs/tracing-subscriber/latest/tracing_subscriber/fmt/index.html#filtering-events-with-environment-variables .
 2024-03-29T18:33:05.533229+08:00 - rlimit NOFILE adjusted rlimit { rlim_cur: 61440, rlim_max: 9223372036854775807 }
 2024-03-29T18:33:05.533292+08:00 - shadowsocks local 1.18.2 build 2024-03-28T03:03:53.093586+00:00
+2025-04-16T16:04:32.429997+08:00 - log4rs doesn't support the tracing (https://crates.io/crates/tracing) framework, 
+         so it would be removed in the future. Consider configure logging with RUST_LOG environment variable. 
+         Check more configuration detail in https://docs.rs/tracing-subscriber/latest/tracing_subscriber/fmt/index.html#filtering-events-with-environment-variables .
+2025-04-16T16:15:53.007452+08:00 - log4rs doesn't support the tracing (https://crates.io/crates/tracing) framework, 
+         so it would be removed in the future. Consider configure logging with RUST_LOG environment variable. 
+         Check more configuration detail in https://docs.rs/tracing-subscriber/latest/tracing_subscriber/fmt/index.html#filtering-events-with-environment-variables .
+2025-04-16T16:15:53.016262+08:00 - rlimit NOFILE adjusted rlimit { rlim_cur: 61440, rlim_max: 9223372036854775807 }
+2025-04-16T16:15:53.016422+08:00 - shadowsocks local 1.23.0 build 2025-04-16T07:27:47.390316+00:00
+2025-04-16T16:16:22.074145+08:00 - log4rs doesn't support the tracing (https://crates.io/crates/tracing) framework, 
+         so it would be removed in the future. Consider configure logging with RUST_LOG environment variable. 
+         Check more configuration detail in https://docs.rs/tracing-subscriber/latest/tracing_subscriber/fmt/index.html#filtering-events-with-environment-variables .
+2025-04-16T16:16:22.077421+08:00 - rlimit NOFILE adjusted rlimit { rlim_cur: 61440, rlim_max: 9223372036854775807 }
+2025-04-16T16:16:22.077522+08:00 - shadowsocks local 1.23.0 build 2025-04-16T07:27:47.390316+00:00
+2025-04-16T16:22:26.350011+08:00 - log4rs doesn't support the tracing (https://crates.io/crates/tracing) framework, 
+         so it would be removed in the future. Consider configure logging with RUST_LOG environment variable. 
+         Check more configuration detail in https://docs.rs/tracing-subscriber/latest/tracing_subscriber/fmt/index.html#filtering-events-with-environment-variables .
+2025-04-16T16:26:51.912698+08:00 - rlimit NOFILE adjusted rlimit { rlim_cur: 61440, rlim_max: 9223372036854775807 }
+2025-04-16T16:26:51.913192+08:00 - shadowsocks local 1.23.0 build 2025-04-16T07:27:47.390316+00:00
+2025-04-16T16:27:33.354110+08:00 - log4rs doesn't support the tracing (https://crates.io/crates/tracing) framework, 
+         so it would be removed in the future. Consider configure logging with RUST_LOG environment variable. 
+         Check more configuration detail in https://docs.rs/tracing-subscriber/latest/tracing_subscriber/fmt/index.html#filtering-events-with-environment-variables .
+2025-04-16T16:27:33.356307+08:00 - rlimit NOFILE adjusted rlimit { rlim_cur: 61440, rlim_max: 9223372036854775807 }
+2025-04-16T16:27:33.356356+08:00 - shadowsocks local 1.23.0 build 2025-04-16T07:27:47.390316+00:00
+2025-04-16T16:32:44.555609+08:00 - log4rs doesn't support the tracing (https://crates.io/crates/tracing) framework, 
+         so it would be removed in the future. Consider configure logging with RUST_LOG environment variable. 
+         Check more configuration detail in https://docs.rs/tracing-subscriber/latest/tracing_subscriber/fmt/index.html#filtering-events-with-environment-variables .
+2025-04-16T16:32:44.557686+08:00 - rlimit NOFILE adjusted rlimit { rlim_cur: 61440, rlim_max: 9223372036854775807 }
+2025-04-16T16:32:44.557735+08:00 - shadowsocks local 1.23.0 build 2025-04-16T07:27:47.390316+00:00
+2025-04-16T16:34:47.758302+08:00 - log4rs doesn't support the tracing (https://crates.io/crates/tracing) framework, 
+         so it would be removed in the future. Consider configure logging with RUST_LOG environment variable. 
+         Check more configuration detail in https://docs.rs/tracing-subscriber/latest/tracing_subscriber/fmt/index.html#filtering-events-with-environment-variables .
+2025-04-16T16:34:47.762078+08:00 - rlimit NOFILE adjusted rlimit { rlim_cur: 61440, rlim_max: 9223372036854775807 }
+2025-04-16T16:34:47.762153+08:00 - shadowsocks local 1.23.0 build 2025-04-16T07:27:47.390316+00:00
+2025-04-16T16:39:29.326812+08:00 - log4rs doesn't support the tracing (https://crates.io/crates/tracing) framework, 
+         so it would be removed in the future. Consider configure logging with RUST_LOG environment variable. 
+         Check more configuration detail in https://docs.rs/tracing-subscriber/latest/tracing_subscriber/fmt/index.html#filtering-events-with-environment-variables .
+2025-04-16T16:39:29.335869+08:00 - rlimit NOFILE adjusted rlimit { rlim_cur: 61440, rlim_max: 9223372036854775807 }
+2025-04-16T16:39:29.335991+08:00 - shadowsocks local 1.23.0 build 2025-04-16T07:27:47.390316+00:00
+2025-04-16T16:39:48.665445+08:00 - log4rs doesn't support the tracing (https://crates.io/crates/tracing) framework, 
+         so it would be removed in the future. Consider configure logging with RUST_LOG environment variable. 
+         Check more configuration detail in https://docs.rs/tracing-subscriber/latest/tracing_subscriber/fmt/index.html#filtering-events-with-environment-variables .
+2025-04-16T16:39:48.668906+08:00 - rlimit NOFILE adjusted rlimit { rlim_cur: 61440, rlim_max: 9223372036854775807 }
+2025-04-16T16:39:48.668993+08:00 - shadowsocks local 1.23.0 build 2025-04-16T07:27:47.390316+00:00
+2025-04-16T16:46:20.974505+08:00 - log4rs doesn't support the tracing (https://crates.io/crates/tracing) framework, 
+         so it would be removed in the future. Consider configure logging with RUST_LOG environment variable. 
+         Check more configuration detail in https://docs.rs/tracing-subscriber/latest/tracing_subscriber/fmt/index.html#filtering-events-with-environment-variables .
+2025-04-16T16:46:20.978164+08:00 - rlimit NOFILE adjusted rlimit { rlim_cur: 61440, rlim_max: 9223372036854775807 }
+2025-04-16T16:46:20.978240+08:00 - shadowsocks local 1.23.0 build 2025-04-16T07:27:47.390316+00:00
+2025-04-16T16:47:56.664299+08:00 - log4rs doesn't support the tracing (https://crates.io/crates/tracing) framework, 
+         so it would be removed in the future. Consider configure logging with RUST_LOG environment variable. 
+         Check more configuration detail in https://docs.rs/tracing-subscriber/latest/tracing_subscriber/fmt/index.html#filtering-events-with-environment-variables .
+2025-04-16T16:47:56.668190+08:00 - rlimit NOFILE adjusted rlimit { rlim_cur: 61440, rlim_max: 9223372036854775807 }
+2025-04-16T16:47:56.668280+08:00 - shadowsocks local 1.23.0 build 2025-04-16T07:27:47.390316+00:00
+2025-04-16T16:55:44.055253+08:00 - log4rs doesn't support the tracing (https://crates.io/crates/tracing) framework, 
+         so it would be removed in the future. Consider configure logging with RUST_LOG environment variable. 
+         Check more configuration detail in https://docs.rs/tracing-subscriber/latest/tracing_subscriber/fmt/index.html#filtering-events-with-environment-variables .
+2025-04-16T16:55:44.061026+08:00 - rlimit NOFILE adjusted rlimit { rlim_cur: 61440, rlim_max: 9223372036854775807 }
+2025-04-16T16:55:44.061079+08:00 - shadowsocks local 1.23.0 build 2025-04-16T07:27:47.390316+00:00
+2025-04-16T17:05:28.377357+08:00 - log4rs doesn't support the tracing (https://crates.io/crates/tracing) framework, 
+         so it would be removed in the future. Consider configure logging with RUST_LOG environment variable. 
+         Check more configuration detail in https://docs.rs/tracing-subscriber/latest/tracing_subscriber/fmt/index.html#filtering-events-with-environment-variables .
+2025-04-16T17:18:06.431740+08:00 - log4rs doesn't support the tracing (https://crates.io/crates/tracing) framework, 
+         so it would be removed in the future. Consider configure logging with RUST_LOG environment variable. 
+         Check more configuration detail in https://docs.rs/tracing-subscriber/latest/tracing_subscriber/fmt/index.html#filtering-events-with-environment-variables .
+2025-04-16T17:18:31.363830+08:00 - rlimit NOFILE adjusted rlimit { rlim_cur: 61440, rlim_max: 9223372036854775807 }
+2025-04-16T17:18:31.364029+08:00 - shadowsocks local 1.23.0 build 2025-04-16T09:17:53.450577+00:00

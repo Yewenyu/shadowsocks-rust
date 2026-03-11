@@ -7,7 +7,7 @@ use std::os::windows::io::{AsRawSocket, AsSocket, BorrowedSocket, IntoRawSocket,
 use std::{
     io::{self, ErrorKind},
     net::SocketAddr,
-    sync::Arc,
+    sync::{Arc, LazyLock},
     task::{Context, Poll, ready},
     time::Duration,
 };
@@ -15,7 +15,6 @@ use std::{
 use byte_string::ByteStr;
 use bytes::{Bytes, BytesMut};
 use log::{info, trace, warn};
-use once_cell::sync::Lazy;
 use tokio::{io::ReadBuf, time};
 
 use crate::{
@@ -34,8 +33,8 @@ use super::{
     },
 };
 
-static DEFAULT_CONNECT_OPTS: Lazy<ConnectOpts> = Lazy::new(Default::default);
-static DEFAULT_SOCKET_CONTROL: Lazy<UdpSocketControlData> = Lazy::new(UdpSocketControlData::default);
+static DEFAULT_CONNECT_OPTS: LazyLock<ConnectOpts> = LazyLock::new(Default::default);
+static DEFAULT_SOCKET_CONTROL: LazyLock<UdpSocketControlData> = LazyLock::new(UdpSocketControlData::default);
 
 /// UDP socket type, defining whether the socket is used in Client or Server
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -61,10 +60,10 @@ pub enum ProxySocketError {
 }
 
 impl From<ProxySocketError> for io::Error {
-    fn from(e: ProxySocketError) -> io::Error {
+    fn from(e: ProxySocketError) -> Self {
         match e {
             ProxySocketError::IoError(e) => e,
-            _ => io::Error::new(ErrorKind::Other, e),
+            _ => Self::other(e),
         }
     }
 }
@@ -88,11 +87,8 @@ pub struct ProxySocket<S> {
 
 impl ProxySocket<ShadowUdpSocket> {
     /// Create a client to communicate with Shadowsocks' UDP server (outbound)
-    pub async fn connect(
-        context: SharedContext,
-        svr_cfg: &ServerConfig,
-    ) -> ProxySocketResult<ProxySocket<ShadowUdpSocket>> {
-        ProxySocket::connect_with_opts(context, svr_cfg, &DEFAULT_CONNECT_OPTS).await
+    pub async fn connect(context: SharedContext, svr_cfg: &ServerConfig) -> ProxySocketResult<Self> {
+        Self::connect_with_opts(context, svr_cfg, &DEFAULT_CONNECT_OPTS).await
     }
 
     /// Create a client to communicate with Shadowsocks' UDP server (outbound)
@@ -100,7 +96,7 @@ impl ProxySocket<ShadowUdpSocket> {
         context: SharedContext,
         svr_cfg: &ServerConfig,
         opts: &ConnectOpts,
-    ) -> ProxySocketResult<ProxySocket<ShadowUdpSocket>> {
+    ) -> ProxySocketResult<Self> {
         // Note: Plugins doesn't support UDP relay
 
         let socket = ShadowUdpSocket::connect_server_with_opts(&context, svr_cfg.udp_external_addr(), opts).await?;
@@ -112,20 +108,12 @@ impl ProxySocket<ShadowUdpSocket> {
             opts
         );
 
-        Ok(ProxySocket::from_socket(
-            UdpSocketType::Client,
-            context,
-            svr_cfg,
-            socket,
-        ))
+        Ok(Self::from_socket(UdpSocketType::Client, context, svr_cfg, socket))
     }
 
     /// Create a `ProxySocket` binding to a specific address (inbound)
-    pub async fn bind(
-        context: SharedContext,
-        svr_cfg: &ServerConfig,
-    ) -> ProxySocketResult<ProxySocket<ShadowUdpSocket>> {
-        ProxySocket::bind_with_opts(context, svr_cfg, AcceptOpts::default()).await
+    pub async fn bind(context: SharedContext, svr_cfg: &ServerConfig) -> ProxySocketResult<Self> {
+        Self::bind_with_opts(context, svr_cfg, AcceptOpts::default()).await
     }
 
     /// Create a `ProxySocket` binding to a specific address (inbound)
@@ -133,7 +121,7 @@ impl ProxySocket<ShadowUdpSocket> {
         context: SharedContext,
         svr_cfg: &ServerConfig,
         opts: AcceptOpts,
-    ) -> ProxySocketResult<ProxySocket<ShadowUdpSocket>> {
+    ) -> ProxySocketResult<Self> {
         // Plugins doesn't support UDP
         let socket = match svr_cfg.udp_external_addr() {
             ServerAddr::SocketAddr(sa) => ShadowUdpSocket::listen_with_opts(sa, opts).await?,
@@ -144,28 +132,18 @@ impl ProxySocket<ShadowUdpSocket> {
                 .1
             }
         };
-        Ok(ProxySocket::from_socket(
-            UdpSocketType::Server,
-            context,
-            svr_cfg,
-            socket,
-        ))
+        Ok(Self::from_socket(UdpSocketType::Server, context, svr_cfg, socket))
     }
 }
 
 impl<S> ProxySocket<S> {
     /// Create a `ProxySocket` from a I/O object that impls `DatagramTransport`
-    pub fn from_socket(
-        socket_type: UdpSocketType,
-        context: SharedContext,
-        svr_cfg: &ServerConfig,
-        socket: S,
-    ) -> ProxySocket<S> {
+    pub fn from_socket(socket_type: UdpSocketType, context: SharedContext, svr_cfg: &ServerConfig, socket: S) -> Self {
         let key = svr_cfg.key().to_vec().into_boxed_slice();
         let method = svr_cfg.method();
 
         // NOTE: svr_cfg.timeout() is not for this socket, but for associations.
-        ProxySocket {
+        Self {
             socket_type,
             io: socket,
             method,

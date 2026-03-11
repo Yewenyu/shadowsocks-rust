@@ -4,6 +4,7 @@
 use std::path::PathBuf;
 use std::{collections::HashMap, io, net::SocketAddr, sync::Arc, time::Duration};
 
+use cfg_if::cfg_if;
 use log::{error, info, trace};
 use shadowsocks::{
     ManagerListener, ServerAddr,
@@ -79,13 +80,13 @@ pub struct ManagerBuilder {
 
 impl ManagerBuilder {
     /// Create a new manager server builder from configuration
-    pub fn new(svr_cfg: ManagerConfig) -> ManagerBuilder {
-        ManagerBuilder::with_context(svr_cfg, Context::new_shared(ServerType::Server))
+    pub fn new(svr_cfg: ManagerConfig) -> Self {
+        Self::with_context(svr_cfg, Context::new_shared(ServerType::Server))
     }
 
     /// Create a new manager server builder with context and configuration
-    pub(crate) fn with_context(svr_cfg: ManagerConfig, context: SharedContext) -> ManagerBuilder {
-        ManagerBuilder {
+    pub(crate) fn with_context(svr_cfg: ManagerConfig, context: SharedContext) -> Self {
+        Self {
             context,
             svr_cfg,
             connect_opts: ConnectOpts::default(),
@@ -233,7 +234,7 @@ impl Manager {
         }
     }
 
-    /// Add a server programatically
+    /// Add a server programmatically
     pub async fn add_server(&self, svr_cfg: ServerConfig) {
         match self.svr_cfg.server_mode {
             ManagerServerMode::Builtin => self.add_server_builtin(svr_cfg).await,
@@ -328,8 +329,8 @@ impl Manager {
         };
 
         let pid_path = self.server_pid_path(port);
-        if pid_path.exists() {
-            if let Ok(mut pid_file) = File::open(&pid_path) {
+        if pid_path.exists()
+            && let Ok(mut pid_file) = File::open(&pid_path) {
                 let mut pid_content = String::new();
                 if pid_file.read_to_string(&mut pid_content).is_ok() {
                     let pid_content = pid_content.trim();
@@ -345,7 +346,6 @@ impl Manager {
                     }
                 }
             }
-        }
 
         let server_config_path = self.server_config_path(port);
 
@@ -386,6 +386,8 @@ impl Manager {
             acl: None, // Set with --acl command line argument
             #[cfg(any(target_os = "linux", target_os = "android"))]
             outbound_fwmark: None,
+            #[cfg(target_os = "freebsd")]
+            outbound_user_cookie: None,
             outbound_bind_addr: None,
             outbound_bind_interface: None,
             outbound_udp_allow_fragmentation: None,
@@ -474,10 +476,22 @@ impl Manager {
                     return Ok(AddResponse(err));
                 }
             },
-            #[cfg(feature = "aead-cipher")]
-            None => self.svr_cfg.method.unwrap_or(CipherKind::CHACHA20_POLY1305),
-            #[cfg(not(feature = "aead-cipher"))]
-            None => return Ok(AddResponse("method is required")),
+            None => match self.svr_cfg.method {
+                Some(m) => m,
+                None => {
+                    cfg_if! {
+                        if #[cfg(feature = "aead-cipher")] {
+                            // If AEAD cipher is enabled, use chacha20-poly1305 as default method
+                            // NOTE: This behavior is defined in shadowsocks-libev's `manager.c`
+                            CipherKind::CHACHA20_POLY1305
+                        } else {
+                            // AEAD cipher is disabled, default method is not defined in any standard or implementations.
+                            // TODO: Complete this after discussion.
+                            return Ok(AddResponse("method is required".to_string()));
+                        }
+                    }
+                }
+            },
         };
 
         let mut svr_cfg = match ServerConfig::new(addr, req.password.clone(), method) {
@@ -538,10 +552,7 @@ impl Manager {
                             user.password
                         );
 
-                        return Err(io::Error::new(
-                            io::ErrorKind::Other,
-                            "users[].password must be encoded with base64",
-                        ));
+                        return Err(io::Error::other("users[].password must be encoded with base64"));
                     }
                 };
 

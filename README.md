@@ -125,13 +125,15 @@ systemctl restart snap.shadowsocks-rust.sslocal-daemon.service
 systemctl status snap.shadowsocks-rust.sslocal-daemon.service
 ```
 
+Default configuration file path probably is `/var/snap/shadowsocks-rust/common/etc/shadowsocks-rust/config.json`.
+
 ### **Download release**
 
 Download static-linked build [here](https://github.com/shadowsocks/shadowsocks-rust/releases).
 
-- `build-windows`: Build for `x86_64-pc-windows-msvc`
-- `build-linux`: Build for `x86_64-unknown-linux-gnu`, Debian 9 (Stretch), GLIBC 2.18
-- `build-docker`: Build for `x86_64-unknown-linux-musl`, `x86_64-pc-windows-gnu`, ... (statically linked)
+- Most of them are built with [cross](https://github.com/cross-rs/cross). Build environment details could be found in its README, such as glibc's version.
+- `x86_64-apple-darwin`, `aarch64-apple-darwin` are built in github's `macos-latest` image. Information could be found in [here](https://docs.github.com/en/actions/using-github-hosted-runners/using-github-hosted-runners/about-github-hosted-runners).
+- `x86_64-pc-windows-msvc` is built in github's `windows-latest` image. Information could be found in [here](https://docs.github.com/en/actions/using-github-hosted-runners/using-github-hosted-runners/about-github-hosted-runners).
 
 ### **Docker**
 
@@ -270,12 +272,18 @@ Requirements:
 ./build/build-release
 ```
 
-Then `sslocal`, `ssserver`, `ssmanager` and `ssurl` will be packaged in
+Then `sslocal`, `ssserver`, `ssmanager`, `ssservice` and `ssurl` will be packaged in
 
 - `./build/shadowsocks-${VERSION}-stable.x86_64-unknown-linux-musl.tar.xz`
 - `./build/shadowsocks-${VERSION}-stable.x86_64-pc-windows-gnu.zip`
 
 Read `Cargo.toml` for more details.
+
+For Linux with low GLIBC versions, set `CROSS_CONFIG` to CentOS based image:
+
+```bash
+export CROSS_CONFIG=Cross-centos.toml
+```
 
 ## Getting Started
 
@@ -302,7 +310,7 @@ Create a ShadowSocks' configuration file. Example
 
 Detailed explanation of the configuration file could be found in [shadowsocks' documentation](https://github.com/shadowsocks/shadowsocks/wiki). (Link to original project, not maintained anymore !)
 
-> :warning: For snap installations, configuration file is most probably located in `/var/snap/shadowsocks-rust/common/etc/shadowsocks-rust/config.json` (see https://github.com/shadowsocks/shadowsocks-rust/issues/621 / https://github.com/shadowsocks/shadowsocks-rust/issues/1146)
+> :warning: For snap installations, configuration file is most probably located in `/var/snap/shadowsocks-rust/common/etc/shadowsocks-rust/config.json` (see <https://github.com/shadowsocks/shadowsocks-rust/issues/621> / <https://github.com/shadowsocks/shadowsocks-rust/issues/1146>)
 
 In shadowsocks-rust, we also have an extended configuration file format, which is able to define more than one server. You can also disable individual servers.
 
@@ -753,6 +761,23 @@ Example configuration:
             // - uPSK is the user's PSK ("password")
             // Example:
             // "password": "3SYJ/f8nmVuzKvKglykRQDSgg10e/ADilkdRWrrY9HU=:4w0GKJ9U3Ox7CIXGU4A3LDQAqP6qrp/tUi/ilpOR9p4="
+        },
+        {
+            "...": "Any other fields",
+
+            // Some optional fields for this specific server
+
+            // Outbound socket options
+            // Linux Only (SO_MARK)
+            "outbound_fwmark": 255,
+            // FreeBSD only (SO_USER_COOKIE)
+            "outbound_user_cookie": 255,
+            // `SO_BINDTODEVICE` (Linux), `IP_BOUND_IF` (BSD), `IP_UNICAST_IF` (Windows) socket option for outbound sockets
+            "outbound_bind_interface": "eth1",
+            // Outbound socket bind() to this IP (choose a specific interface)
+            "outbound_bind_addr": "11.22.33.44",
+            // Outbound UDP socket allows IP fragmentation (default false)
+            "outbound_udp_allow_fragmentation": false,
         }
     ],
 
@@ -816,7 +841,7 @@ Example configuration:
     // Outbound socket bind() to this IP (choose a specific interface)
     "outbound_bind_addr": "11.22.33.44",
     // Outbound UDP socket allows IP fragmentation (default false)
-    "outbound_udp_allow_fragmentation": false
+    "outbound_udp_allow_fragmentation": false,
 
     // Balancer customization
     "balancer": {
@@ -835,25 +860,76 @@ Example configuration:
     "online_config": {
         "config_url": "https://path-to-online-sip008-configuration",
         // Optional. Seconds between each update to config_url. Default to 3600s
-        "update_interval": 3600
+        "update_interval": 3600,
+        // Optional. Whitelist of plugins (RECOMMENDED for all users)
+        // SECURITY: To avoid executing untrusted commands loaded from config_url
+        "allowed_plugins": [
+            "v2ray-plugin"
+        ]
     },
 
     // Service configurations
     // Logger configuration
     "log": {
+        // Default log level to use, if not overridden by `writers`, default is `0`
         // Equivalent to `-v` command line option
         "level": 1,
+        // Default log format to use, if not overridden by `writers`
         "format": {
-            // Euiqvalent to `--log-without-time`
+            // Euiqvalent to `--log-without-time`, default is `false`
             "without_time": false,
         },
-        // Equivalent to `--log-config`
-        // More detail could be found in https://crates.io/crates/log4rs
-        "config_path": "/path/to/log4rs/config.yaml"
+        // Advanced logging configuration for configuring multiple writers
+        // A console writer will be configured by default.
+        // Set this to empty array `[]` to disable logging completely
+        "writers": [
+            {
+                // Configure a console writer
+                // The inner fields are optional, if not set, it will use the default values
+                // To minimally configure a console writer, simply write `"console": {}`.
+                "console": {
+                    "level": 2,
+                    "format": {
+                        "without_time": false,
+                    }
+                }
+            },
+            {
+                // Configure a file writer, useful when running as a Windows Service
+                "file": {
+                    // `level` and `format` can also be set here, if not set, it will use the default values
+                    
+                    // Required. Directory to store log files
+                    "directory": "/var/log/shadowsocks-rust",
+                    // Optional. Log rotation frequency, must be one of the following:
+                    // - never (default): This will result in log file located at `directory/prefix.suffix`
+                    // - daily: A new log file in the format of `directory/prefix.yyyy-MM-dd.suffix` will be created daily
+                    // - hourly: A new log file in the format of `directory/prefix.yyyy-MM-dd-HH.suffix` will be created hourly
+                    "rotation": "never",
+                    // Optional. Prefix of log file, default is one of `sslocal`, `ssserver`, `ssmanager` depending on the service being run.
+                    "prefix": "shadowsocks-rust",
+                    // Optional. Suffix of log file, default is `log`
+                    "suffix": "log",
+                    // Optional. If set, keeps the last N log files
+                    "max_files": 5
+                }
+            },
+            {
+                // Configure a syslog writer, only supported on *nix system
+                "syslog": {
+                    // `level` and `format` can also be set here, if not set, it will use the default values
+
+                    // Optional. Set the "identity" when calling openlog(). Use current service name by default.
+                    "identity": "identity_name",
+                    // Optional. Set the "facility" when calling openlog(). 1 (user-level messages) by default. See RFC5424.
+                    "facility": 1
+                }
+            }
+        ]
     },
     // Runtime configuration
     "runtime": {
-        // single_thread or multi_thread
+        // `single_thread` or `multi_thread`
         "mode": "multi_thread",
         // Worker threads that are used in multi-thread runtime
         "worker_count": 10
@@ -929,19 +1005,22 @@ These Ciphers require `"password"` to be a Base64 string of key that have **exac
 
 - For local servers (`sslocal`, `ssredir`, ...)
   - Modes:
-    - `[bypass_all]` - ACL runs in `BlackList` mode. Bypasses all addresses that didn't match any rules.
-    - `[proxy_all]` - ACL runs in `WhiteList` mode. Proxies all addresses that didn't match any rules.
+    - `[bypass_all]` - ACL runs in `WhiteList` mode. Bypasses all addresses except those matched any rules.
+    - `[proxy_all]` - ACL runs in `BlackList` mode. Proxies all addresses except those matched any rules. (default)
   - Rules:
     - `[bypass_list]` - Rules for connecting directly
     - `[proxy_list]` - Rules for connecting through proxies
 - For remote servers (`ssserver`)
   - Modes:
-    - `[reject_all]` - ACL runs in `BlackList` mode. Rejects all clients that didn't match any rules.
-    - `[accept_all]` - ACL runs in `WhiteList` mode. Accepts all clients that didn't match any rules.
+    - `[reject_all]` - ACL runs in `WhiteList` mode. Rejects all clients except those matched any rules.
+    - `[accept_all]` - ACL runs in `BlackList` mode. Accepts all clients except those matched any rules. (default)
+    - `[outbound_block_all]` - Outbound ACL runs in `WhiteList` mode. Blockes all outbound addresses except those matched any rules.
+    - `[outbound_allow_all]` - Outbound ACL runs in `BlackList` mode. Allows all outbound addresses except those matched any rules. (default)
   - Rules:
     - `[white_list]` - Rules for accepted clients
     - `[black_list]` - Rules for rejected clients
     - `[outbound_block_list]` - Rules for blocking outbound addresses.
+    - `[outbound_allow_list]` - Rules for allowing outbound addresses.
 
 ### Example
 

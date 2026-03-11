@@ -37,18 +37,14 @@ pub struct SocksBuilder {
 
 impl SocksBuilder {
     /// Create a new SOCKS server with default configuration
-    pub fn new(client_config: ServerAddr, balancer: PingBalancer) -> SocksBuilder {
+    pub fn new(client_config: ServerAddr, balancer: PingBalancer) -> Self {
         let context = ServiceContext::new();
-        SocksBuilder::with_context(Arc::new(context), client_config, balancer)
+        Self::with_context(Arc::new(context), client_config, balancer)
     }
 
     /// Create a new SOCKS server with context
-    pub fn with_context(
-        context: Arc<ServiceContext>,
-        client_config: ServerAddr,
-        balancer: PingBalancer,
-    ) -> SocksBuilder {
-        SocksBuilder {
+    pub fn with_context(context: Arc<ServiceContext>, client_config: ServerAddr, balancer: PingBalancer) -> Self {
+        Self {
             context,
             mode: Mode::TcpOnly,
             udp_expiry_duration: None,

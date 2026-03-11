@@ -64,11 +64,11 @@ fn max_latency_stdev(max_server_rtt: u32) -> f64 {
 }
 
 impl ServerStat {
-    pub fn new(user_weight: f32, max_server_rtt: u32, check_window: Duration) -> ServerStat {
+    pub fn new(user_weight: f32, max_server_rtt: u32, check_window: Duration) -> Self {
         assert!((0.0..=1.0).contains(&user_weight));
 
         let max_latency_stdev = max_latency_stdev(max_server_rtt);
-        ServerStat {
+        Self {
             max_server_rtt,
             latency_queue: VecDeque::new(),
             max_latency_stdev,
@@ -193,7 +193,7 @@ impl ServerStat {
                 vlat_abs_diff.sort_unstable();
 
                 let abs_diff_median_mid = vlat_abs_diff.len() / 2;
-                self.data.latency_mad = if vlat_abs_diff.len() % 2 == 0 {
+                self.data.latency_mad = if vlat_abs_diff.len().is_multiple_of(2) {
                     (vlat_abs_diff[abs_diff_median_mid] + vlat_abs_diff[abs_diff_median_mid - 1]) / 2
                 } else {
                     vlat_abs_diff[abs_diff_median_mid]

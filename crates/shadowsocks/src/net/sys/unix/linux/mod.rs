@@ -1,5 +1,6 @@
 use std::{
-    io, mem,
+    io::{self, ErrorKind},
+    mem,
     net::{Ipv4Addr, Ipv6Addr, SocketAddr},
     os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd},
     pin::Pin,
@@ -8,10 +9,9 @@ use std::{
     task::{self, Poll},
 };
 
-use cfg_if::cfg_if;
 use log::{debug, error, warn};
 use pin_project::pin_project;
-use socket2::{Domain, Protocol, SockAddr, Socket, Type};
+use socket2::{Domain, Protocol, SockAddr, SockAddrStorage, Socket, Type};
 use tokio::{
     io::{AsyncRead, AsyncWrite, ReadBuf},
     net::{TcpSocket, TcpStream as TokioTcpStream, UdpSocket},
@@ -32,9 +32,9 @@ pub enum TcpStream {
 }
 
 impl TcpStream {
-    pub async fn connect(addr: SocketAddr, opts: &ConnectOpts) -> io::Result<TcpStream> {
+    pub async fn connect(addr: SocketAddr, opts: &ConnectOpts) -> io::Result<Self> {
         if opts.tcp.mptcp {
-            return TcpStream::connect_mptcp(addr, opts).await;
+            return Self::connect_mptcp(addr, opts).await;
         }
 
         let socket = match addr {
@@ -42,31 +42,20 @@ impl TcpStream {
             SocketAddr::V6(..) => TcpSocket::new_v6()?,
         };
 
-        TcpStream::connect_with_socket(socket, addr, opts).await
+        Self::connect_with_socket(socket, addr, opts).await
     }
 
-    async fn connect_mptcp(addr: SocketAddr, opts: &ConnectOpts) -> io::Result<TcpStream> {
+    async fn connect_mptcp(addr: SocketAddr, opts: &ConnectOpts) -> io::Result<Self> {
         let socket = create_mptcp_socket(&addr)?;
-        TcpStream::connect_with_socket(socket, addr, opts).await
+        Self::connect_with_socket(socket, addr, opts).await
     }
 
-    async fn connect_with_socket(socket: TcpSocket, addr: SocketAddr, opts: &ConnectOpts) -> io::Result<TcpStream> {
+    async fn connect_with_socket(socket: TcpSocket, addr: SocketAddr, opts: &ConnectOpts) -> io::Result<Self> {
         // Any traffic to localhost should not be protected
         // This is a workaround for VPNService
         #[cfg(target_os = "android")]
         if !addr.ip().is_loopback() {
-            use std::{io::ErrorKind, time::Duration};
-            use tokio::time;
-
-            if let Some(ref path) = opts.vpn_protect_path {
-                // RPC calls to `VpnService.protect()`
-                // Timeout in 3 seconds like shadowsocks-libev
-                match time::timeout(Duration::from_secs(3), vpn_protect(path, socket.as_raw_fd())).await {
-                    Ok(Ok(..)) => {}
-                    Ok(Err(err)) => return Err(err),
-                    Err(..) => return Err(io::Error::new(ErrorKind::TimedOut, "protect() timeout")),
-                }
-            }
+            android::vpn_protect(&socket, opts).await?;
         }
 
         // Set SO_MARK for mark-based routing on Linux (since 2.6.25)
@@ -100,40 +89,40 @@ impl TcpStream {
             let stream = socket.connect(addr).await?;
             set_common_sockopt_after_connect(&stream, opts)?;
 
-            return Ok(TcpStream::Standard(stream));
+            return Ok(Self::Standard(stream));
         }
 
         let stream = TfoStream::connect_with_socket(socket, addr).await?;
         set_common_sockopt_after_connect(&stream, opts)?;
 
-        Ok(TcpStream::FastOpen(stream))
+        Ok(Self::FastOpen(stream))
     }
 
     pub fn local_addr(&self) -> io::Result<SocketAddr> {
         match *self {
-            TcpStream::Standard(ref s) => s.local_addr(),
-            TcpStream::FastOpen(ref s) => s.local_addr(),
+            Self::Standard(ref s) => s.local_addr(),
+            Self::FastOpen(ref s) => s.local_addr(),
         }
     }
 
     pub fn peer_addr(&self) -> io::Result<SocketAddr> {
         match *self {
-            TcpStream::Standard(ref s) => s.peer_addr(),
-            TcpStream::FastOpen(ref s) => s.peer_addr(),
+            Self::Standard(ref s) => s.peer_addr(),
+            Self::FastOpen(ref s) => s.peer_addr(),
         }
     }
 
     pub fn nodelay(&self) -> io::Result<bool> {
         match *self {
-            TcpStream::Standard(ref s) => s.nodelay(),
-            TcpStream::FastOpen(ref s) => s.nodelay(),
+            Self::Standard(ref s) => s.nodelay(),
+            Self::FastOpen(ref s) => s.nodelay(),
         }
     }
 
     pub fn set_nodelay(&self, nodelay: bool) -> io::Result<()> {
         match *self {
-            TcpStream::Standard(ref s) => s.set_nodelay(nodelay),
-            TcpStream::FastOpen(ref s) => s.set_nodelay(nodelay),
+            Self::Standard(ref s) => s.set_nodelay(nodelay),
+            Self::FastOpen(ref s) => s.set_nodelay(nodelay),
         }
     }
 }
@@ -141,8 +130,8 @@ impl TcpStream {
 impl AsRawFd for TcpStream {
     fn as_raw_fd(&self) -> RawFd {
         match *self {
-            TcpStream::Standard(ref s) => s.as_raw_fd(),
-            TcpStream::FastOpen(ref s) => s.as_raw_fd(),
+            Self::Standard(ref s) => s.as_raw_fd(),
+            Self::FastOpen(ref s) => s.as_raw_fd(),
         }
     }
 }
@@ -287,7 +276,18 @@ pub fn set_disable_ip_fragmentation<S: AsRawFd>(af: AddrFamily, socket: &S) -> i
 pub async fn create_outbound_udp_socket(af: AddrFamily, config: &ConnectOpts) -> io::Result<UdpSocket> {
     let bind_addr = match (af, config.bind_local_addr) {
         (AddrFamily::Ipv4, Some(SocketAddr::V4(addr))) => addr.into(),
+        (AddrFamily::Ipv4, Some(SocketAddr::V6(addr))) => {
+            // Map IPv6 bind_local_addr to IPv4 if AF is IPv4
+            match addr.ip().to_ipv4_mapped() {
+                Some(addr) => SocketAddr::new(addr.into(), 0),
+                None => return Err(io::Error::new(ErrorKind::InvalidInput, "Invalid IPv6 address")),
+            }
+        }
         (AddrFamily::Ipv6, Some(SocketAddr::V6(addr))) => addr.into(),
+        (AddrFamily::Ipv6, Some(SocketAddr::V4(addr))) => {
+            // Map IPv4 bind_local_addr to IPv6 if AF is IPv6
+            SocketAddr::new(addr.ip().to_ipv6_mapped().into(), 0)
+        }
         (AddrFamily::Ipv4, ..) => SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 0),
         (AddrFamily::Ipv6, ..) => SocketAddr::new(Ipv6Addr::UNSPECIFIED.into(), 0),
     };
@@ -310,29 +310,15 @@ pub async fn bind_outbound_udp_socket(bind_addr: &SocketAddr, config: &ConnectOp
         UdpSocket::from_std(socket.into())?
     };
 
-    if !config.udp.allow_fragmentation {
-        if let Err(err) = set_disable_ip_fragmentation(af, &socket) {
+    if !config.udp.allow_fragmentation
+        && let Err(err) = set_disable_ip_fragmentation(af, &socket) {
             warn!("failed to disable IP fragmentation, error: {}", err);
         }
-    }
 
     // Any traffic except localhost should be protected
     // This is a workaround for VPNService
     #[cfg(target_os = "android")]
-    {
-        use std::{io::ErrorKind, time::Duration};
-        use tokio::time;
-
-        if let Some(ref path) = config.vpn_protect_path {
-            // RPC calls to `VpnService.protect()`
-            // Timeout in 3 seconds like shadowsocks-libev
-            match time::timeout(Duration::from_secs(3), vpn_protect(path, socket.as_raw_fd())).await {
-                Ok(Ok(..)) => {}
-                Ok(Err(err)) => return Err(err),
-                Err(..) => return Err(io::Error::new(ErrorKind::TimedOut, "protect() timeout")),
-            }
-        }
-    }
+    android::vpn_protect(&socket, config).await?;
 
     // Set SO_MARK for mark-based routing on Linux (since 2.6.25)
     // NOTE: This will require CAP_NET_ADMIN capability (root in most cases)
@@ -383,39 +369,67 @@ fn set_bindtodevice<S: AsRawFd>(socket: &S, iface: &str) -> io::Result<()> {
     Ok(())
 }
 
-cfg_if! {
-    if #[cfg(target_os = "android")] {
-        use std::{
-            io::ErrorKind,
-            path::Path,
-        };
-        use tokio::io::AsyncReadExt;
+#[cfg(target_os = "android")]
+mod android {
+    use std::{
+        io::{self, ErrorKind},
+        os::unix::io::{AsRawFd, RawFd},
+        path::Path,
+        time::Duration,
+    };
+    use tokio::{io::AsyncReadExt, time};
 
-        use super::uds::UnixStream;
+    use super::super::uds::UnixStream;
+    use super::ConnectOpts;
 
-        /// This is a RPC for Android to `protect()` socket for connecting to remote servers
-        ///
-        /// https://developer.android.com/reference/android/net/VpnService#protect(java.net.Socket)
-        ///
-        /// More detail could be found in [shadowsocks-android](https://github.com/shadowsocks/shadowsocks-android) project.
-        async fn vpn_protect<P: AsRef<Path>>(protect_path: P, fd: RawFd) -> io::Result<()> {
-            let mut stream = UnixStream::connect(protect_path).await?;
+    /// This is a RPC for Android to `protect()` socket for connecting to remote servers
+    ///
+    /// https://developer.android.com/reference/android/net/VpnService#protect(java.net.Socket)
+    ///
+    /// More detail could be found in [shadowsocks-android](https://github.com/shadowsocks/shadowsocks-android) project.
+    async fn send_vpn_protect_uds<P: AsRef<Path>>(protect_path: P, fd: RawFd) -> io::Result<()> {
+        let mut stream = UnixStream::connect(protect_path).await?;
 
-            // send fds
-            let dummy: [u8; 1] = [1];
-            let fds: [RawFd; 1] = [fd];
-            stream.send_with_fd(&dummy, &fds).await?;
+        // send fds
+        let dummy: [u8; 1] = [1];
+        let fds: [RawFd; 1] = [fd];
+        stream.send_with_fd(&dummy, &fds).await?;
 
-            // receive the return value
-            let mut response = [0; 1];
-            stream.read_exact(&mut response).await?;
+        // receive the return value
+        let mut response = [0; 1];
+        stream.read_exact(&mut response).await?;
 
-            if response[0] == 0xFF {
-                return Err(io::Error::new(ErrorKind::Other, "protect() failed"));
-            }
-
-            Ok(())
+        if response[0] == 0xFF {
+            return Err(io::Error::other("protect() failed"));
         }
+
+        Ok(())
+    }
+
+    /// Try to run VPNService#protect on Android
+    ///
+    /// https://developer.android.com/reference/android/net/VpnService#protect(java.net.Socket)
+    pub async fn vpn_protect<S>(socket: &S, opts: &ConnectOpts) -> io::Result<()>
+    where
+        S: AsRawFd + Send + Sync + 'static,
+    {
+        // shadowsocks-android uses a Unix domain socket to communicate with the VPNService#protect
+        if let Some(ref path) = opts.vpn_protect_path {
+            // RPC calls to `VpnService.protect()`
+            // Timeout in 3 seconds like shadowsocks-libev
+            match time::timeout(Duration::from_secs(3), send_vpn_protect_uds(path, socket.as_raw_fd())).await {
+                Ok(Ok(..)) => {}
+                Ok(Err(err)) => return Err(err),
+                Err(..) => return Err(io::Error::new(ErrorKind::TimedOut, "protect() timeout")),
+            }
+        }
+
+        // Customized SocketProtect
+        if let Some(ref protect) = opts.vpn_socket_protect {
+            protect.protect(socket.as_raw_fd())?;
+        }
+
+        Ok(())
     }
 }
 
@@ -424,8 +438,9 @@ static SUPPORT_BATCH_SEND_RECV_MSG: AtomicBool = AtomicBool::new(true);
 fn recvmsg_fallback<S: AsRawFd>(sock: &S, msg: &mut BatchRecvMessage<'_>) -> io::Result<()> {
     let mut hdr: libc::msghdr = unsafe { mem::zeroed() };
 
-    let addr_storage: libc::sockaddr_storage = unsafe { mem::zeroed() };
-    let addr_len = mem::size_of_val(&addr_storage) as libc::socklen_t;
+    let addr_storage = SockAddrStorage::zeroed();
+    let addr_len = addr_storage.size_of() as libc::socklen_t;
+
     let sock_addr = unsafe { SockAddr::new(addr_storage, addr_len) };
     hdr.msg_name = sock_addr.as_ptr() as *mut _;
     hdr.msg_namelen = sock_addr.len() as _;
@@ -460,8 +475,8 @@ pub fn batch_recvmsg<S: AsRawFd>(sock: &S, msgs: &mut [BatchRecvMessage<'_>]) ->
     for msg in msgs.iter_mut() {
         let mut hdr: libc::mmsghdr = unsafe { mem::zeroed() };
 
-        let addr_storage: libc::sockaddr_storage = unsafe { mem::zeroed() };
-        let addr_len = mem::size_of_val(&addr_storage) as libc::socklen_t;
+        let addr_storage = SockAddrStorage::zeroed();
+        let addr_len = addr_storage.size_of() as libc::socklen_t;
 
         vec_msg_name.push(unsafe { SockAddr::new(addr_storage, addr_len) });
         let sock_addr = vec_msg_name.last_mut().unwrap();

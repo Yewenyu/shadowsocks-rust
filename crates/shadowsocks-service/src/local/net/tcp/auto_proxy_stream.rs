@@ -8,6 +8,7 @@ use std::{
     task::{self, Poll},
 };
 
+use log::trace;
 use pin_project::pin_project;
 use shadowsocks::{
     net::{ConnectOpts, TcpStream},
@@ -32,15 +33,11 @@ pub enum AutoProxyClientStream {
 
 impl AutoProxyClientStream {
     /// Connect to target `addr` via shadowsocks' server configured by `svr_cfg`
-    pub async fn connect<A>(
-        context: Arc<ServiceContext>,
-        server: &ServerIdent,
-        addr: A,
-    ) -> io::Result<AutoProxyClientStream>
+    pub async fn connect<A>(context: Arc<ServiceContext>, server: &ServerIdent, addr: A) -> io::Result<Self>
     where
         A: Into<Address>,
     {
-        AutoProxyClientStream::connect_with_opts(context.clone(), server, addr, context.connect_opts_ref()).await
+        Self::connect_with_opts(context.clone(), server, addr, context.connect_opts_ref()).await
     }
 
     /// Connect to target `addr` via shadowsocks' server configured by `svr_cfg`
@@ -49,24 +46,31 @@ impl AutoProxyClientStream {
         server: &ServerIdent,
         addr: A,
         opts: &ConnectOpts,
-    ) -> io::Result<AutoProxyClientStream>
+    ) -> io::Result<Self>
     where
         A: Into<Address>,
     {
-        let addr = addr.into();
+        #[cfg_attr(not(feature = "local-fake-dns"), allow(unused_mut))]
+        let mut addr = addr.into();
+        #[cfg(feature = "local-fake-dns")]
+        if let Some(mapped_addr) = context.try_map_fake_address(&addr).await {
+            addr = mapped_addr;
+        }
         if context.check_target_bypassed(&addr).await {
-            AutoProxyClientStream::connect_bypassed_with_opts(context, addr, opts).await
+            trace!("Bypassing target address {addr}");
+            Self::connect_bypassed_with_opts_inner(context, addr, opts).await
         } else {
-            AutoProxyClientStream::connect_proxied_with_opts(context, server, addr, opts).await
+            trace!("Proxying target address {addr}");
+            Self::connect_proxied_with_opts_inner(context, server, addr, opts).await
         }
     }
 
     /// Connect directly to target `addr`
-    pub async fn connect_bypassed<A>(context: Arc<ServiceContext>, addr: A) -> io::Result<AutoProxyClientStream>
+    pub async fn connect_bypassed<A>(context: Arc<ServiceContext>, addr: A) -> io::Result<Self>
     where
         A: Into<Address>,
     {
-        AutoProxyClientStream::connect_bypassed_with_opts(context.clone(), addr, context.connect_opts_ref()).await
+        Self::connect_bypassed_with_opts(context.clone(), addr, context.connect_opts_ref()).await
     }
 
     /// Connect directly to target `addr`
@@ -74,7 +78,7 @@ impl AutoProxyClientStream {
         context: Arc<ServiceContext>,
         addr: A,
         connect_opts: &ConnectOpts,
-    ) -> io::Result<AutoProxyClientStream>
+    ) -> io::Result<Self>
     where
         A: Into<Address>,
     {
@@ -85,21 +89,28 @@ impl AutoProxyClientStream {
         if let Some(mapped_addr) = context.try_map_fake_address(&addr).await {
             addr = mapped_addr;
         }
-        let stream = TcpStream::connect_remote_with_opts(context.context_ref(), &addr, connect_opts).await?;
-        Ok(AutoProxyClientStream::Bypassed(stream))
+        Self::connect_bypassed_with_opts_inner(context, addr, connect_opts).await
     }
 
-    /// Connect to target `addr` via shadowsocks' server configured by `svr_cfg`
-    pub async fn connect_proxied<A>(
+    async fn connect_bypassed_with_opts_inner<A>(
         context: Arc<ServiceContext>,
-        server: &ServerIdent,
         addr: A,
-    ) -> io::Result<AutoProxyClientStream>
+        connect_opts: &ConnectOpts,
+    ) -> io::Result<Self>
     where
         A: Into<Address>,
     {
-        AutoProxyClientStream::connect_proxied_with_opts(context.clone(), server, addr, context.connect_opts_ref())
-            .await
+        let addr = addr.into();
+        let stream = TcpStream::connect_remote_with_opts(context.context_ref(), &addr, connect_opts).await?;
+        Ok(Self::Bypassed(stream))
+    }
+
+    /// Connect to target `addr` via shadowsocks' server configured by `svr_cfg`
+    pub async fn connect_proxied<A>(context: Arc<ServiceContext>, server: &ServerIdent, addr: A) -> io::Result<Self>
+    where
+        A: Into<Address>,
+    {
+        Self::connect_proxied_with_opts(context.clone(), server, addr, context.connect_opts_ref()).await
     }
 
     /// Connect to target `addr` via shadowsocks' server configured by `svr_cfg`
@@ -108,7 +119,7 @@ impl AutoProxyClientStream {
         server: &ServerIdent,
         addr: A,
         connect_opts: &ConnectOpts,
-    ) -> io::Result<AutoProxyClientStream>
+    ) -> io::Result<Self>
     where
         A: Into<Address>,
     {
@@ -118,6 +129,18 @@ impl AutoProxyClientStream {
         if let Some(mapped_addr) = context.try_map_fake_address(&addr).await {
             addr = mapped_addr;
         }
+        Self::connect_proxied_with_opts_inner(context, server, addr, connect_opts).await
+    }
+
+    async fn connect_proxied_with_opts_inner<A>(
+        context: Arc<ServiceContext>,
+        server: &ServerIdent,
+        addr: A,
+        connect_opts: &ConnectOpts,
+    ) -> io::Result<Self>
+    where
+        A: Into<Address>,
+    {
         let flow_stat = context.flow_stat();
         let stream = match ProxyClientStream::connect_with_opts_map(
             context.context(),
@@ -134,27 +157,27 @@ impl AutoProxyClientStream {
                 return Err(err);
             }
         };
-        Ok(AutoProxyClientStream::Proxied(stream))
+        Ok(Self::Proxied(stream))
     }
 
     pub fn local_addr(&self) -> io::Result<SocketAddr> {
         match *self {
-            AutoProxyClientStream::Proxied(ref s) => s.get_ref().get_ref().local_addr(),
-            AutoProxyClientStream::Bypassed(ref s) => s.local_addr(),
+            Self::Proxied(ref s) => s.get_ref().get_ref().local_addr(),
+            Self::Bypassed(ref s) => s.local_addr(),
         }
     }
 
     pub fn set_nodelay(&self, nodelay: bool) -> io::Result<()> {
         match *self {
-            AutoProxyClientStream::Proxied(ref s) => s.get_ref().get_ref().set_nodelay(nodelay),
-            AutoProxyClientStream::Bypassed(ref s) => s.set_nodelay(nodelay),
+            Self::Proxied(ref s) => s.get_ref().get_ref().set_nodelay(nodelay),
+            Self::Bypassed(ref s) => s.set_nodelay(nodelay),
         }
     }
 }
 
 impl AutoProxyIo for AutoProxyClientStream {
     fn is_proxied(&self) -> bool {
-        matches!(*self, AutoProxyClientStream::Proxied(..))
+        matches!(*self, Self::Proxied(..))
     }
 }
 
@@ -203,6 +226,6 @@ impl AsyncWrite for AutoProxyClientStream {
 
 impl From<ProxyClientStream<MonProxyStream<TcpStream>>> for AutoProxyClientStream {
     fn from(s: ProxyClientStream<MonProxyStream<TcpStream>>) -> Self {
-        AutoProxyClientStream::Proxied(s)
+        Self::Proxied(s)
     }
 }

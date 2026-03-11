@@ -1,8 +1,7 @@
 use std::{
     collections::HashMap,
     future::Future,
-    io::{self, ErrorKind},
-    mem,
+    io, mem,
     net::{IpAddr, SocketAddr},
     pin::Pin,
     sync::{
@@ -18,8 +17,8 @@ use log::{debug, error, trace};
 use shadowsocks::{net::TcpSocketOpts, relay::socks5::Address};
 use smoltcp::{
     iface::{Config as InterfaceConfig, Interface, PollResult, SocketHandle, SocketSet},
-    phy::{DeviceCapabilities, Medium},
-    socket::tcp::{Socket as TcpSocket, SocketBuffer as TcpSocketBuffer, State as TcpState},
+    phy::{Checksum, DeviceCapabilities, Medium},
+    socket::tcp::{CongestionControl, Socket as TcpSocket, SocketBuffer as TcpSocketBuffer, State as TcpState},
     storage::RingBuffer,
     time::{Duration as SmolDuration, Instant as SmolInstant},
     wire::{HardwareAddress, IpAddress, IpCidr, Ipv4Address, Ipv6Address, TcpPacket},
@@ -40,11 +39,11 @@ use crate::{
     net::utils::to_ipv4_mapped,
 };
 
-use super::virt_device::VirtTunDevice;
+use super::virt_device::{TokenBuffer, VirtTunDevice};
 
-// NOTE: Default buffer could contain 20 AEAD packets
-const DEFAULT_TCP_SEND_BUFFER_SIZE: u32 = 0x3FFF * 20;
-const DEFAULT_TCP_RECV_BUFFER_SIZE: u32 = 0x3FFF * 20;
+// NOTE: Default buffer could contain 5 AEAD packets
+const DEFAULT_TCP_SEND_BUFFER_SIZE: u32 = (0x3FFFu32 * 5).next_power_of_two();
+const DEFAULT_TCP_RECV_BUFFER_SIZE: u32 = (0x3FFFu32 * 5).next_power_of_two();
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 enum TcpSocketState {
@@ -68,8 +67,8 @@ struct ManagerNotify {
 }
 
 impl ManagerNotify {
-    fn new(thread: Thread) -> ManagerNotify {
-        ManagerNotify { thread }
+    fn new(thread: Thread) -> Self {
+        Self { thread }
     }
 
     fn notify(&self) {
@@ -119,7 +118,7 @@ impl TcpConnection {
         socket_creation_tx: &mpsc::UnboundedSender<TcpSocketCreation>,
         manager_notify: Arc<ManagerNotify>,
         tcp_opts: &TcpSocketOpts,
-    ) -> impl Future<Output = TcpConnection> + use<> {
+    ) -> impl Future<Output = Self> + use<> {
         let send_buffer_size = tcp_opts.send_buffer_size.unwrap_or(DEFAULT_TCP_SEND_BUFFER_SIZE);
         let recv_buffer_size = tcp_opts.recv_buffer_size.unwrap_or(DEFAULT_TCP_RECV_BUFFER_SIZE);
 
@@ -140,7 +139,7 @@ impl TcpConnection {
         async move {
             // waiting socket add to SocketSet
             let _ = rx.await;
-            TcpConnection {
+            Self {
                 control,
                 manager_notify,
             }
@@ -160,11 +159,10 @@ impl AsyncRead for TcpConnection {
             }
 
             // Nothing could be read. Wait for notify.
-            if let Some(old_waker) = control.recv_waker.replace(cx.waker().clone()) {
-                if !old_waker.will_wake(cx.waker()) {
+            if let Some(old_waker) = control.recv_waker.replace(cx.waker().clone())
+                && !old_waker.will_wake(cx.waker()) {
                     old_waker.wake();
                 }
-            }
 
             return Poll::Pending;
         }
@@ -192,11 +190,10 @@ impl AsyncWrite for TcpConnection {
         // Write to buffer
 
         if control.send_buffer.is_full() {
-            if let Some(old_waker) = control.send_waker.replace(cx.waker().clone()) {
-                if !old_waker.will_wake(cx.waker()) {
+            if let Some(old_waker) = control.send_waker.replace(cx.waker().clone())
+                && !old_waker.will_wake(cx.waker()) {
                     old_waker.wake();
                 }
-            }
 
             return Poll::Pending;
         }
@@ -225,11 +222,10 @@ impl AsyncWrite for TcpConnection {
             control.send_state = TcpSocketState::Close;
         }
 
-        if let Some(old_waker) = control.send_waker.replace(cx.waker().clone()) {
-            if !old_waker.will_wake(cx.waker()) {
+        if let Some(old_waker) = control.send_waker.replace(cx.waker().clone())
+            && !old_waker.will_wake(cx.waker()) {
                 old_waker.wake();
             }
-        }
 
         self.manager_notify.notify();
         Poll::Pending
@@ -243,8 +239,8 @@ pub struct TcpTun {
     manager_socket_creation_tx: mpsc::UnboundedSender<TcpSocketCreation>,
     manager_running: Arc<AtomicBool>,
     balancer: PingBalancer,
-    iface_rx: mpsc::UnboundedReceiver<Vec<u8>>,
-    iface_tx: mpsc::UnboundedSender<Vec<u8>>,
+    iface_rx: mpsc::UnboundedReceiver<TokenBuffer>,
+    iface_tx: mpsc::UnboundedSender<TokenBuffer>,
     iface_tx_avail: Arc<AtomicBool>,
 }
 
@@ -257,10 +253,15 @@ impl Drop for TcpTun {
 }
 
 impl TcpTun {
-    pub fn new(context: Arc<ServiceContext>, balancer: PingBalancer, mtu: u32) -> TcpTun {
+    pub fn new(context: Arc<ServiceContext>, balancer: PingBalancer, mtu: u32) -> Self {
         let mut capabilities = DeviceCapabilities::default();
         capabilities.medium = Medium::Ip;
         capabilities.max_transmission_unit = mtu as usize;
+        capabilities.checksum.ipv4 = Checksum::Tx;
+        capabilities.checksum.tcp = Checksum::Tx;
+        capabilities.checksum.udp = Checksum::Tx;
+        capabilities.checksum.icmpv4 = Checksum::Tx;
+        capabilities.checksum.icmpv6 = Checksum::Tx;
 
         let (mut device, iface_rx, iface_tx, iface_tx_avail) = VirtTunDevice::new(capabilities);
 
@@ -417,11 +418,10 @@ impl TcpTun {
                                 wake_receiver = true;
                             }
 
-                            if wake_receiver && control.recv_waker.is_some() {
-                                if let Some(waker) = control.recv_waker.take() {
+                            if wake_receiver && control.recv_waker.is_some()
+                                && let Some(waker) = control.recv_waker.take() {
                                     waker.wake();
                                 }
-                            }
 
                             // Check if writable
                             let mut wake_sender = false;
@@ -452,11 +452,10 @@ impl TcpTun {
                                 }
                             }
 
-                            if wake_sender && control.send_waker.is_some() {
-                                if let Some(waker) = control.send_waker.take() {
+                            if wake_sender && control.send_waker.is_some()
+                                && let Some(waker) = control.send_waker.take() {
                                     waker.wake();
                                 }
-                            }
                         }
 
                         for socket_handle in sockets_to_remove {
@@ -481,7 +480,7 @@ impl TcpTun {
 
         let manager_notify = Arc::new(ManagerNotify::new(manager_handle.thread().clone()));
 
-        TcpTun {
+        Self {
             context,
             manager_handle: Some(manager_handle),
             manager_notify,
@@ -516,9 +515,11 @@ impl TcpTun {
             socket.set_timeout(Some(SmolDuration::from_secs(7200)));
             // NO ACK delay
             // socket.set_ack_delay(None);
+            // Enable Cubic congestion control
+            socket.set_congestion_control(CongestionControl::Cubic);
 
             if let Err(err) = socket.listen(dst_addr) {
-                return Err(io::Error::new(ErrorKind::Other, format!("listen error: {:?}", err)));
+                return Err(io::Error::other(format!("listen error: {:?}", err)));
             }
 
             debug!("created TCP connection for {} <-> {}", src_addr, dst_addr);
@@ -544,8 +545,8 @@ impl TcpTun {
         Ok(())
     }
 
-    pub async fn drive_interface_state(&mut self, frame: &[u8]) {
-        if self.iface_tx.send(frame.to_vec()).is_err() {
+    pub async fn drive_interface_state(&mut self, frame: TokenBuffer) {
+        if self.iface_tx.send(frame).is_err() {
             panic!("interface send channel closed unexpectedly");
         }
 
@@ -554,7 +555,7 @@ impl TcpTun {
         self.manager_notify.notify();
     }
 
-    pub async fn recv_packet(&mut self) -> Vec<u8> {
+    pub async fn recv_packet(&mut self) -> TokenBuffer {
         match self.iface_rx.recv().await {
             Some(v) => v,
             None => unreachable!("channel closed unexpectedly"),
@@ -595,11 +596,10 @@ async fn handle_redir_client(
     // Get forward address from socket
     //
     // Try to convert IPv4 mapped IPv6 address for dual-stack mode.
-    if let SocketAddr::V6(ref a) = daddr {
-        if let Some(v4) = to_ipv4_mapped(a.ip()) {
+    if let SocketAddr::V6(ref a) = daddr
+        && let Some(v4) = to_ipv4_mapped(a.ip()) {
             daddr = SocketAddr::new(IpAddr::from(v4), a.port());
         }
-    }
     let target_addr = Address::from(daddr);
     establish_client_tcp_redir(context, balancer, s, peer_addr, &target_addr).await
 }

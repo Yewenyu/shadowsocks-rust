@@ -1,12 +1,6 @@
 //! Shadowsocks UDP server
 
-use std::{
-    cell::RefCell,
-    io::{self, ErrorKind},
-    net::SocketAddr,
-    sync::Arc,
-    time::Duration,
-};
+use std::{cell::RefCell, io, net::SocketAddr, sync::Arc, time::Duration};
 
 use bytes::Bytes;
 use futures::future;
@@ -56,11 +50,11 @@ enum NatMap {
 impl NatMap {
     fn cleanup_expired(&mut self) {
         match *self {
-            NatMap::Association(ref mut m) => {
+            Self::Association(ref mut m) => {
                 m.iter();
             }
             #[cfg(feature = "aead-cipher-2022")]
-            NatMap::Session(ref mut m) => {
+            Self::Session(ref mut m) => {
                 m.iter();
             }
         }
@@ -68,11 +62,11 @@ impl NatMap {
 
     fn keep_alive(&mut self, key: &NatKey) {
         match (self, key) {
-            (NatMap::Association(m), NatKey::PeerAddr(peer_addr)) => {
+            (Self::Association(m), NatKey::PeerAddr(peer_addr)) => {
                 m.get(peer_addr);
             }
             #[cfg(feature = "aead-cipher-2022")]
-            (NatMap::Session(m), NatKey::SessionId(session_id)) => {
+            (Self::Session(m), NatKey::SessionId(session_id)) => {
                 m.get(session_id);
             }
             #[allow(unreachable_patterns)]
@@ -99,7 +93,7 @@ impl UdpServer {
         time_to_live: Option<Duration>,
         capacity: Option<usize>,
         accept_opts: AcceptOpts,
-    ) -> io::Result<UdpServer> {
+    ) -> io::Result<Self> {
         let time_to_live = time_to_live.unwrap_or(crate::DEFAULT_UDP_EXPIRY_DURATION);
 
         fn create_assoc_map<K, V>(time_to_live: Duration, capacity: Option<usize>) -> LruCache<K, V>
@@ -128,7 +122,7 @@ impl UdpServer {
         let socket = MonProxySocket::from_socket(socket, context.flow_stat());
         let listener = Arc::new(socket);
 
-        Ok(UdpServer {
+        Ok(Self {
             context,
             assoc_map,
             keepalive_tx,
@@ -180,7 +174,7 @@ impl UdpServer {
 
                     loop {
                         let (n, peer_addr, target_addr, control) =
-                            match UdpServer::recv_one_packet(&context, &listener, &mut buffer).await {
+                            match Self::recv_one_packet(&context, &listener, &mut buffer).await {
                                 Some(s) => s,
                                 None => continue,
                             };
@@ -238,11 +232,11 @@ impl UdpServer {
                 }
 
                 peer_addr_opt = self.keepalive_rx.recv() => {
-                    let peer_addr = peer_addr_opt.expect("keep-alive channel closed unexpectly");
+                    let peer_addr = peer_addr_opt.expect("keep-alive channel closed unexpectedly");
                     self.assoc_map.keep_alive(&peer_addr);
                 }
 
-                recv_result = UdpServer::recv_one_packet(&self.context, &listener, &mut buffer) => {
+                recv_result = Self::recv_one_packet(&self.context, &listener, &mut buffer) => {
                     let (n, peer_addr, target_addr, control) = match recv_result {
                         Some(s) => s,
                         None => continue,
@@ -346,7 +340,7 @@ impl UdpServer {
                 let xcontrol = match control {
                     None => {
                         error!("control is required for session based NAT, from {}", peer_addr);
-                        return Err(io::Error::new(ErrorKind::Other, "control data missing in packet"));
+                        return Err(io::Error::other("control data missing in packet"));
                     }
                     Some(ref c) => c,
                 };
@@ -398,9 +392,9 @@ impl UdpAssociation {
         inbound: Arc<MonProxySocket<InboundUdpSocket>>,
         peer_addr: SocketAddr,
         keepalive_tx: mpsc::Sender<NatKey>,
-    ) -> UdpAssociation {
+    ) -> Self {
         let (assoc_handle, sender) = UdpAssociationContext::create(context, inbound, peer_addr, keepalive_tx, None);
-        UdpAssociation { assoc_handle, sender }
+        Self { assoc_handle, sender }
     }
 
     #[cfg(feature = "aead-cipher-2022")]
@@ -410,15 +404,15 @@ impl UdpAssociation {
         peer_addr: SocketAddr,
         keepalive_tx: mpsc::Sender<NatKey>,
         client_session_id: u64,
-    ) -> UdpAssociation {
+    ) -> Self {
         let (assoc_handle, sender) =
             UdpAssociationContext::create(context, inbound, peer_addr, keepalive_tx, Some(client_session_id));
-        UdpAssociation { assoc_handle, sender }
+        Self { assoc_handle, sender }
     }
 
     fn try_send(&self, data: UdpAssociationSendMessage) -> io::Result<()> {
         if self.sender.try_send(data).is_err() {
-            let err = io::Error::new(ErrorKind::Other, "udp relay channel full");
+            let err = io::Error::other("udp relay channel full");
             return Err(err);
         }
         Ok(())
@@ -432,8 +426,8 @@ struct ClientSessionContext {
 }
 
 impl ClientSessionContext {
-    fn new(client_session_id: u64) -> ClientSessionContext {
-        ClientSessionContext {
+    fn new(client_session_id: u64) -> Self {
+        Self {
             client_session_id,
             packet_window_filter: PacketWindowFilter::new(),
             client_user: None,
@@ -488,7 +482,7 @@ impl UdpAssociationContext {
         // being OOM.
         let (sender, receiver) = mpsc::channel(UDP_ASSOCIATION_SEND_CHANNEL_SIZE);
 
-        let mut assoc = UdpAssociationContext {
+        let mut assoc = Self {
             context,
             peer_addr,
             outbound_ipv4_socket: None,
@@ -599,15 +593,14 @@ impl UdpAssociationContext {
         data: &[u8],
         control: &Option<UdpSocketControlData>,
     ) {
-        if let Some(ref mut session) = self.client_session {
-            if peer_addr != self.peer_addr {
+        if let Some(ref mut session) = self.client_session
+            && peer_addr != self.peer_addr {
                 debug!(
                     "udp relay for {} changed to {}, session: {:?}",
                     self.peer_addr, peer_addr, session.client_session_id
                 );
                 self.peer_addr = peer_addr;
             }
-        }
 
         trace!(
             "udp relay {} -> {} with {} bytes, control: {:?}",
@@ -743,11 +736,10 @@ impl UdpAssociationContext {
         // It is an undefined behavior in shadowsocks' protocol about how to handle IPv4-mapped-IPv6.
         // But for some implementations, they may expect the target address to be IPv4, because
         // the peer address is IPv4 when calling `sendto`.
-        if let Address::SocketAddress(SocketAddr::V6(ref v6)) = addr {
-            if let Some(v4) = to_ipv4_mapped(v6.ip()) {
+        if let Address::SocketAddress(SocketAddr::V6(ref v6)) = addr
+            && let Some(v4) = to_ipv4_mapped(v6.ip()) {
                 addr = Address::SocketAddress(SocketAddr::new(v4.into(), v6.port()));
             }
-        }
 
         match self.client_session {
             None => {

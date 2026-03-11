@@ -59,19 +59,19 @@ mod local_value_parser {
     impl FromStr for RemoteDnsAddress {
         type Err = AddressError;
 
-        fn from_str(a: &str) -> Result<RemoteDnsAddress, Self::Err> {
+        fn from_str(a: &str) -> Result<Self, Self::Err> {
             if let Ok(ip) = a.parse::<IpAddr>() {
-                return Ok(RemoteDnsAddress(Address::SocketAddress(SocketAddr::new(ip, 53))));
+                return Ok(Self(Address::SocketAddress(SocketAddr::new(ip, 53))));
             }
 
             if let Ok(saddr) = a.parse::<SocketAddr>() {
-                return Ok(RemoteDnsAddress(Address::SocketAddress(saddr)));
+                return Ok(Self(Address::SocketAddress(saddr)));
             }
 
             if a.find(':').is_some() {
                 a.parse::<Address>().map(RemoteDnsAddress)
             } else {
-                Ok(RemoteDnsAddress(Address::DomainNameAddress(a.to_owned(), 53)))
+                Ok(Self(Address::DomainNameAddress(a.to_owned(), 53)))
             }
         }
     }
@@ -261,6 +261,8 @@ pub fn define_command_line_options(mut app: Command) -> Command {
             .arg(
                 Arg::new("LOG_CONFIG")
                     .long("log-config")
+                    // deprecated for removal
+                    .hide(true)
                     .num_args(1)
                     .action(ArgAction::Set)
                     .value_parser(clap::value_parser!(PathBuf))
@@ -570,6 +572,12 @@ pub fn define_command_line_options(mut app: Command) -> Command {
                     .action(ArgAction::Set)
                     .value_parser(clap::value_parser!(u64))
                     .help("SIP008 Online Configuration Delivery update interval in seconds, 3600 by default"),
+            )
+            .arg(
+                Arg::new("ONLINE_CONFIG_ALLOWED_PLUGIN")
+                    .long("online-config-allowed-plugin")
+                    .action(ArgAction::Append)
+                    .help("SIP008 Online Configuration Delivery allowed plugin list"),
             );
     }
 
@@ -747,17 +755,15 @@ pub fn create(matches: &ArgMatches) -> ShadowsocksResult<(Runtime, impl Future<O
 
             #[cfg(feature = "local-redir")]
             {
-                if RedirType::tcp_default() != RedirType::NotSupported {
-                    if let Some(tcp_redir) = matches.get_one::<String>("TCP_REDIR") {
+                if RedirType::tcp_default() != RedirType::NotSupported
+                    && let Some(tcp_redir) = matches.get_one::<String>("TCP_REDIR") {
                         local_config.tcp_redir = tcp_redir.parse::<RedirType>().expect("tcp-redir");
                     }
-                }
 
-                if RedirType::udp_default() != RedirType::NotSupported {
-                    if let Some(udp_redir) = matches.get_one::<String>("UDP_REDIR") {
+                if RedirType::udp_default() != RedirType::NotSupported
+                    && let Some(udp_redir) = matches.get_one::<String>("UDP_REDIR") {
                         local_config.udp_redir = udp_redir.parse::<RedirType>().expect("udp-redir");
                     }
-                }
             }
 
             #[cfg(feature = "local-dns")]
@@ -930,9 +936,16 @@ pub fn create(matches: &ArgMatches) -> ShadowsocksResult<(Runtime, impl Future<O
             use shadowsocks_service::config::OnlineConfig;
 
             let online_config_update_interval = matches.get_one::<u64>("ONLINE_CONFIG_UPDATE_INTERVAL").cloned();
+
+            let mut allowed_plugins = None;
+            if let Some(plugins) = matches.get_many::<String>("ONLINE_CONFIG_ALLOWED_PLUGIN") {
+                allowed_plugins = Some(plugins.cloned().collect());
+            }
+
             config.online_config = Some(OnlineConfig {
                 config_url: online_config_url.clone(),
                 update_interval: online_config_update_interval.map(Duration::from_secs),
+                allowed_plugins,
             });
         }
 

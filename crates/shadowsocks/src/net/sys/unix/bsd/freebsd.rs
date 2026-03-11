@@ -1,5 +1,6 @@
 use std::{
-    io, mem,
+    io::{self, ErrorKind},
+    mem,
     net::{Ipv4Addr, Ipv6Addr, SocketAddr},
     os::unix::io::{AsRawFd, RawFd},
     pin::Pin,
@@ -10,7 +11,7 @@ use std::{
 
 use log::{debug, error, warn};
 use pin_project::pin_project;
-use socket2::{Domain, Protocol, SockAddr, Socket, Type};
+use socket2::{Domain, Protocol, SockAddr, SockAddrStorage, Socket, Type};
 use tokio::{
     io::{AsyncRead, AsyncWrite, ReadBuf},
     net::{TcpSocket, TcpStream as TokioTcpStream, UdpSocket},
@@ -228,7 +229,18 @@ pub fn set_disable_ip_fragmentation<S: AsRawFd>(af: AddrFamily, socket: &S) -> i
 pub async fn create_outbound_udp_socket(af: AddrFamily, config: &ConnectOpts) -> io::Result<UdpSocket> {
     let bind_addr = match (af, config.bind_local_addr) {
         (AddrFamily::Ipv4, Some(SocketAddr::V4(addr))) => addr.into(),
+        (AddrFamily::Ipv4, Some(SocketAddr::V6(addr))) => {
+            // Map IPv6 bind_local_addr to IPv4 if AF is IPv4
+            match addr.ip().to_ipv4_mapped() {
+                Some(addr) => SocketAddr::new(addr.into(), 0),
+                None => return Err(io::Error::new(ErrorKind::InvalidInput, "Invalid IPv6 address")),
+            }
+        }
         (AddrFamily::Ipv6, Some(SocketAddr::V6(addr))) => addr.into(),
+        (AddrFamily::Ipv6, Some(SocketAddr::V4(addr))) => {
+            // Map IPv4 bind_local_addr to IPv6 if AF is IPv6
+            SocketAddr::new(addr.ip().to_ipv6_mapped().into(), 0)
+        }
         (AddrFamily::Ipv4, ..) => SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 0),
         (AddrFamily::Ipv6, ..) => SocketAddr::new(Ipv6Addr::UNSPECIFIED.into(), 0),
     };
@@ -265,8 +277,9 @@ static SUPPORT_BATCH_SEND_RECV_MSG: AtomicBool = AtomicBool::new(true);
 fn recvmsg_fallback<S: AsRawFd>(sock: &S, msg: &mut BatchRecvMessage<'_>) -> io::Result<()> {
     let mut hdr: libc::msghdr = unsafe { mem::zeroed() };
 
-    let addr_storage: libc::sockaddr_storage = unsafe { mem::zeroed() };
-    let addr_len = mem::size_of_val(&addr_storage) as libc::socklen_t;
+    let addr_storage = SockAddrStorage::zeroed();
+    let addr_len = addr_storage.size_of() as libc::socklen_t;
+
     let sock_addr = unsafe { SockAddr::new(addr_storage, addr_len) };
     hdr.msg_name = sock_addr.as_ptr() as *mut _;
     hdr.msg_namelen = sock_addr.len() as _;
@@ -301,8 +314,8 @@ pub fn batch_recvmsg<S: AsRawFd>(sock: &S, msgs: &mut [BatchRecvMessage<'_>]) ->
     for msg in msgs.iter_mut() {
         let mut hdr: libc::mmsghdr = unsafe { mem::zeroed() };
 
-        let addr_storage: libc::sockaddr_storage = unsafe { mem::zeroed() };
-        let addr_len = mem::size_of_val(&addr_storage) as libc::socklen_t;
+        let addr_storage = SockAddrStorage::zeroed();
+        let addr_len = addr_storage.size_of() as libc::socklen_t;
 
         vec_msg_name.push(unsafe { SockAddr::new(addr_storage, addr_len) });
         let sock_addr = vec_msg_name.last_mut().unwrap();

@@ -29,18 +29,14 @@ pub struct HttpBuilder {
 
 impl HttpBuilder {
     /// Create a new HTTP Local server builder
-    pub fn new(client_config: ServerAddr, balancer: PingBalancer) -> HttpBuilder {
+    pub fn new(client_config: ServerAddr, balancer: PingBalancer) -> Self {
         let context = ServiceContext::new();
-        HttpBuilder::with_context(Arc::new(context), client_config, balancer)
+        Self::with_context(Arc::new(context), client_config, balancer)
     }
 
     /// Create with an existed context
-    pub fn with_context(
-        context: Arc<ServiceContext>,
-        client_config: ServerAddr,
-        balancer: PingBalancer,
-    ) -> HttpBuilder {
-        HttpBuilder {
+    pub fn with_context(context: Arc<ServiceContext>, client_config: ServerAddr, balancer: PingBalancer) -> Self {
+        Self {
             context,
             client_config,
             balancer,
@@ -143,8 +139,8 @@ pub struct HttpConnectionHandler {
 
 impl HttpConnectionHandler {
     /// Create a new Handler
-    pub fn new(context: Arc<ServiceContext>, balancer: PingBalancer) -> HttpConnectionHandler {
-        HttpConnectionHandler {
+    pub fn new(context: Arc<ServiceContext>, balancer: PingBalancer) -> Self {
+        Self {
             context,
             balancer,
             http_client: HttpClient::new(),
@@ -156,7 +152,7 @@ impl HttpConnectionHandler {
     where
         S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
     {
-        let HttpConnectionHandler {
+        let Self {
             context,
             balancer,
             http_client,

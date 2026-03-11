@@ -16,7 +16,11 @@ jobs:
       fail-fast: false
       matrix:
         platform:
+          - target: x86_64-unknown-linux-gnu
+            toolchain: stable
           - target: x86_64-unknown-linux-musl
+            toolchain: stable
+          - target: aarch64-unknown-linux-gnu
             toolchain: stable
           - target: aarch64-unknown-linux-musl
             toolchain: stable
@@ -26,15 +30,37 @@ jobs:
             toolchain: nightly
           - target: mips64el-unknown-linux-gnuabi64
             toolchain: nightly
+          - target: x86_64-unknown-freebsd
+            toolchain: stable
+          - target: x86_64-unknown-netbsd
+            toolchain: stable
+          - target: loongarch64-unknown-linux-gnu
+            toolchain: stable
+          - target: loongarch64-unknown-linux-musl
+            toolchain: stable
+          - target: powerpc-unknown-linux-gnu
+            toolchain: stable
+          - target: powerpc64-unknown-linux-gnu
+            toolchain: stable
+          - target: powerpc64le-unknown-linux-gnu
+            toolchain: stable
+          - target: riscv64gc-unknown-linux-gnu
+            toolchain: stable
+          - target: riscv64gc-unknown-linux-musl
+            toolchain: stable
+          - target: aarch64-linux-android
+            toolchain: stable
+          - target: x86_64-linux-android
+            toolchain: stable
 
     steps:
       - name: Free Disk Space (Ubuntu)
         uses: jlumbroso/free-disk-space@main
 
       - name: Install LLVM and Clang
-        run: sudo apt install -y clang
+        run: sudo apt update && sudo apt install -y clang
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Rust
         run: |
@@ -71,7 +97,7 @@ jobs:
           ./build-release -t ${{ matrix.platform.target }} $compile_features $compile_compress $compile_nightly $compile_cargo_flags
 
       - name: Upload Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: ${{ matrix.platform.target }}
           path: build/release/*
@@ -89,7 +115,7 @@ jobs:
           - x86_64-apple-darwin
           - aarch64-apple-darwin
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install GNU tar
         if: runner.os == 'macOS'
@@ -112,7 +138,7 @@ jobs:
           ./build/build-host-release -t ${{ matrix.target }}
 
       - name: Upload Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: ${{ matrix.target }}
           path: build/release/*
@@ -123,7 +149,7 @@ jobs:
       RUSTFLAGS: "-C target-feature=+crt-static"
       RUST_BACKTRACE: full
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ilammy/setup-nasm@v1
 
       - name: Install Rust
@@ -138,7 +164,7 @@ jobs:
           pwsh ./build/build-host-release.ps1 "full winservice"
 
       - name: Upload Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: windows-native
           path: build/release/*

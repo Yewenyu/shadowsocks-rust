@@ -1,6 +1,6 @@
 [package]
 name = "shadowsocks-service"
-version = "1.23.0"
+version = "1.24.0"
 authors = ["Shadowsocks Contributors"]
 description = "shadowsocks is a fast tunnel proxy that helps you bypass firewalls."
 repository = "https://github.com/shadowsocks/shadowsocks-rust"
@@ -9,7 +9,7 @@ documentation = "https://docs.rs/shadowsocks-service"
 keywords = ["shadowsocks", "proxy", "socks", "socks5", "firewall"]
 license = "MIT"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.88"
 
 [badges]
 maintenance = { status = "passively-maintained" }
@@ -125,17 +125,16 @@ log = "0.4"
 
 cfg-if = "1"
 pin-project = "1.1"
-once_cell = "1.17"
 thiserror = "2.0"
 arc-swap = "1.7"
 
-spin = { version = "0.9" }
+spin = { version = "0.10" }
 lru_time_cache = "0.11"
 bytes = "1.7"
 byte_string = "1.0"
 byteorder = "1.5"
 rand = { version = "0.9", features = ["small_rng"] }
-rocksdb = { version = "0.23", optional = true }
+rocksdb = { version = "0.24", optional = true }
 
 futures = "0.3"
 tokio = { version = "1.38", features = [
@@ -149,7 +148,7 @@ tokio = { version = "1.38", features = [
 ] }
 tokio-native-tls = { version = "0.3", optional = true }
 native-tls = { version = "0.2.8", optional = true, features = ["alpn"] }
-webpki-roots = { version = "0.26", optional = true }
+webpki-roots = { version = "1.0", optional = true }
 tokio-rustls = { version = "0.26", optional = true, default-features = false, features = [
     "logging",
     "tls12",
@@ -158,7 +157,7 @@ tokio-rustls = { version = "0.26", optional = true, default-features = false, fe
 rustls-native-certs = { version = "0.8", optional = true }
 trait-variant = "0.1"
 
-socket2 = { version = "0.5", features = ["all"] }
+socket2 = { version = "0.6", features = ["all"] }
 libc = "~0.2.141"
 
 hyper = { version = "1.4", optional = true, features = ["full"] }
@@ -166,45 +165,51 @@ http-body-util = { version = "0.1", optional = true }
 http = { version = "1.1", optional = true }
 httparse = { version = "1.9", optional = true }
 
-hickory-resolver = { version = "0.25", optional = true, features = [
-    "serde",
-] }
+hickory-resolver = { version = "0.25", optional = true, features = ["serde"] }
 
 idna = "1.0"
 ipnet = "2.10"
 iprange = "0.6"
-regex = "1.4"
+regex = { version = "1.4", default-features = false, features = [
+    "std",
+    "perf",
+] }
 
 mime = { version = "0.3", optional = true }
 flate2 = { version = "1.0", optional = true }
-brotli = { version = "7.0", optional = true }
+brotli = { version = "8.0", optional = true }
 zstd = { version = "0.13", optional = true }
 
-tun = { version = "0.7", optional = true, features = ["async"] }
-etherparse = { version = "0.17", optional = true }
+etherparse = { version = "0.19", optional = true }
 smoltcp = { version = "0.12", optional = true, default-features = false, features = [
     "std",
     "log",
     "medium-ip",
     "proto-ipv4",
+    "proto-ipv4-fragmentation",
     "proto-ipv6",
     "socket-icmp",
     "socket-udp",
     "socket-tcp",
+    "socket-tcp-cubic",
 ] }
 
 serde = { version = "1.0", features = ["derive"] }
-json5 = "0.4"
-bson = { version = "2.13.0", optional = true }
+json5 = "1.3"
+serde_json = "1.0"
+bson = { version = "3.0.0", features = ["serde"], optional = true }
 
-shadowsocks = { version = "1.23.0", path = "../shadowsocks", default-features = false }
+shadowsocks = { version = "1.24.0", path = "../shadowsocks", default-features = false }
 
 # Just for the ioctl call macro
 [target.'cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd", target_os = "openbsd"))'.dependencies]
-nix = { version = "0.29", features = ["ioctl"] }
+nix = { version = "0.30", features = ["ioctl"] }
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.59", features = ["Win32_Networking_WinSock"] }
+windows-sys = { version = "0.61", features = ["Win32_Networking_WinSock"] }
+
+[target.'cfg(any(target_os = "ios", target_os = "macos", target_os = "linux", target_os = "android", target_os = "windows", target_os = "freebsd"))'.dependencies]
+tun = { version = "0.8", optional = true, features = ["async"] }
 
 [dev-dependencies]
 byteorder = "1.5"
@@ -218,3 +223,6 @@ features = [
     "dns-over-tls",
     "dns-over-https",
 ]
+
+[lints.clippy]
+uninlined_format_args = "allow"

@@ -1,10 +1,12 @@
 
 
+use std::process::ExitCode;
+
 use clap::Command;
 use shadowsocks_rust::service::local;
 
 
-pub fn ss_start(path: String) {
+pub fn ss_start(path: String) -> i32 {
 
     let mut app = Command::new("shadowsocks")
         .version(shadowsocks_rust::VERSION)
@@ -17,7 +19,13 @@ pub fn ss_start(path: String) {
 
     // 使用模拟的外部参数解析命令行
     let matches = app.get_matches_from(external_args);
+     match local::create(&matches).and_then(|(runtime, main_fut)| runtime.block_on(main_fut)) {
+        Ok(()) => return 0,
+        Err(err) => {
+            eprintln!("{err}");
+            return err.exit_code() as i32;
+        }
+    }
     
     
-    local::main(&matches);
 }

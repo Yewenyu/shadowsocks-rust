@@ -9,11 +9,7 @@ edition = "2021"
 
 [dependencies]
 shadowsocks-rust = { path = "..",default-features = false,features = [
-    "local-http",
-    "local-dns",
-    "multi-threaded",
-    "logging",
-    "server"
+    "basic"
     ]}
 
 clap = "*"
